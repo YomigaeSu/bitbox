@@ -21,7 +21,11 @@ public class Peer {
 
 	// Hard coded the ip addresses and ports for test purpose
 	// Peer1 settings: port 8111; peerPort 8112
+<<<<<<< HEAD
 	// Peer2 settings: port 8112; peerPort 8113
+=======
+	// Peer2 settings: port 8112; peerPort 8111
+>>>>>>> origin/master
 	private static String ip = "localhost";
 	private static int port = 8111;
 	private static String peerIp = "localhost";
