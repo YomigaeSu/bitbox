@@ -23,47 +23,34 @@ public class ServerMain implements FileSystemObserver {
 	@Override
 	public void processFileSystemEvent(FileSystemEvent fileSystemEvent) {
 		// TODO: process events
+		Document newCommand = new Document();
+		String message = new String();
 		switch (fileSystemEvent.event) {
 		case FILE_MODIFY:
 
-			// transform fileSystemEvent into JSONObject
-			JSONObject message = new JSONObject();
-			message.put("command", "FILE_MODIFY_REQUEST");
-
-			Document doc = (Document) fileSystemEvent.fileDescriptor.toDoc();
+			// transform fileSystemEvent into Document(JSONObject)
+			newCommand.append("command", "FILE_MODIFY_REQUEST");
+			// Read fileDescriptor from fileSystemEvent
+			Document fileDescriptor = (Document) fileSystemEvent.fileDescriptor.toDoc();
 			// transform fileDesciptor Doc into JSONObject
-			JSONObject fileDescriptor = new JSONObject();
-			fileDescriptor.put("md5", doc.get("md5"));
-			fileDescriptor.put("lastModified", doc.get("lastModified"));
-			fileDescriptor.put("fileSize", doc.get("fileSize"));
-			message.put("fileDescriptor", fileDescriptor);
+			newCommand.append("fileDescriptor", fileDescriptor);
+			newCommand.append("pathName", fileSystemEvent.name);
 
-			message.put("pathName", fileSystemEvent.name);
-
-			String protocol = message.toJSONString();
-			System.out.println(protocol);
-			log.info(protocol);
-
+			message = newCommand.toJson();
+			log.info(message);
 			break;
+			
 		case FILE_CREATE:
 
 			// transform fileSystemEvent into JSONObject
-			JSONObject message1 = new JSONObject();
-			message1.put("command", "FILE_CREATE_REQUEST");
-
+			newCommand.append("command", "FILE_CREATE_REQUEST");
 			Document document  = (Document) fileSystemEvent.fileDescriptor.toDoc();
-			// transform fileDesciptor Doc into JSONObject
-			JSONObject file = new JSONObject();
-			file.put("md5", document.get("md5"));
-			file.put("lastModified", document.get("lastModified"));
-			file.put("fileSize", document.get("fileSize"));
-			message1.put("fileDescriptor", file);
-
-			message1.put("pathName", fileSystemEvent.name);
+			newCommand.append("fileDescriptor", document);
+			newCommand.append("pathName", fileSystemEvent.name);
 			
-			String protocol1 = message1.toJSONString();
-			
-			log.info(protocol1);
+			message = newCommand.toJson();
+			log.info(message);
+			break;
 		}
 	}
 

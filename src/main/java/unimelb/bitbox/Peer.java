@@ -299,10 +299,10 @@ public class Peer {
 	}
 
 	private static String generateInvalidProtocol() {
-		JSONObject newCommand = new JSONObject();
-		newCommand.put("command", "INVALID_PROTOCOL");
-		newCommand.put("message", "message must contain a command field as string");
-		return newCommand.toJSONString();
+		Document newCommand = new Document();
+		newCommand.append("command", "INVALID_PROTOCOL");
+		newCommand.append("message", "message must contain a command field as string");
+		return newCommand.toJson();
 	}
 
 	/**
