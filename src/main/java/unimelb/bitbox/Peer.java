@@ -47,7 +47,6 @@ public class Peer {
 		ServerMain ser = new ServerMain();
 		client(firstPeerIp, firstPeerPort);
 		server();
-		
 
 		// ser.sentOutMessages();
 
@@ -101,17 +100,17 @@ public class Peer {
 							case "HANDSHAKE_RESPONSE":
 								// Connection Established
 								// TODO: Connect next peer in the config file
-								HostPort connectedHostPort = new HostPort((Document)command.get("hostPort"));
-								if(!connectedPeers.contains(connectedHostPort)) {
+								HostPort connectedHostPort = new HostPort((Document) command.get("hostPort"));
+								if (!connectedPeers.contains(connectedHostPort)) {
 									connectedPeers.add(connectedHostPort);
 								}
 								break;
 
-							case "HANDSHAKE_REFUSED":
+							case "CONNECTION_REFUSED":
 								// The serverPeer reached max number
 								// Read the the returned peer list, use BFS to connect one of them
 								socket.close();
-								handleConnectionRefused(command);
+//								handleConnectionRefused(command);
 								break;
 
 							default:
@@ -139,28 +138,26 @@ public class Peer {
 				}
 			}
 
+			/**
+			 * Read the peers list in "CONNECTION_REFUSED" and try to open a new client
+			 * thread for them
+			 * 
+			 * @param command The "CONNECTION_REFUSED", sample: { "command":
+			 *                "CONNECTION_REFUSED", "message": "connection limit reached"
+			 *                "peers": [ {"host" : "sunrise.cis.unimelb.edu.au", "port" :
+			 *                8111}, {"host" : "bigdata.cis.unimelb.edu.au", "port" : 8500}
+			 *                ] }
+			 */
 			private void handleConnectionRefused(Document command) {
-				// {
-				// "command": "CONNECTION_REFUSED",
-				// "message": "connection limit reached"
-				// "peers": [
-				// {
-				// "host" : "sunrise.cis.unimelb.edu.au",
-				// "port" : 8111
-				// },
-				// {
-				// "host" : "bigdata.cis.unimelb.edu.au",
-				// "port" : 8500
-				// }
-				// ]
-				// }
+
 				ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
 				for (Document peer : peers) {
 					HostPort hostPort = new HostPort(peer);
 					// While the peer is not on the list
 					// try to connect it.
 					if (!connectedPeers.contains(hostPort)) {
-						System.out.println("Try connecting to alternative peer: " + hostPort.host + ":" + hostPort.port);
+						System.out
+								.println("Try connecting to alternative peer: " + hostPort.host + ":" + hostPort.port);
 						client(hostPort.host, hostPort.port);
 						System.out.println("Current connected peers: " + connectedPeers);
 					}
@@ -186,11 +183,11 @@ public class Peer {
 			System.out.println("Server listening on" + ip + ":" + port + " for a connection");
 			while (true) {
 				if (connectionCount <= 10) {
-				Socket clientSocket = serverSocket.accept();
-				
-				// Check if the connection has reached maximum number
-				// TODO Change 10 to maxConnection Number in the configuration
-				
+					Socket clientSocket = serverSocket.accept();
+
+					// Check if the connection has reached maximum number
+					// TODO Change 10 to maxConnection Number in the configuration
+
 					Thread t2 = new Thread(() -> serverClient(clientSocket));
 					connectionCount++;
 					System.out.println(
@@ -261,14 +258,14 @@ public class Peer {
 	 *
 	 */
 	private static String handleHandshake(Document command) {
-		HostPort hostPort = new HostPort((Document)command.get("hostPort"));
+		HostPort hostPort = new HostPort((Document) command.get("hostPort"));
 
 		Document newCommand = new Document();
 		// TODO Check if the maximum connections are reached
 		// If reached, reply with the current connected peer list
 		if (checkConnectionNumber() >= Integer
 				.parseInt(Configuration.getConfigurationValue("maximumIncommingConnections"))) {
-			newCommand.append("command", "HANDSHAKE_REFUSED");
+			newCommand.append("command", "CONNECTION_REFUSED");
 			newCommand.append("message", "connection limit reached");
 			ArrayList<HostPort> peers = (ArrayList<HostPort>) connectedPeers;
 			ArrayList<Document> docs = new ArrayList<>();
@@ -276,11 +273,10 @@ public class Peer {
 				docs.add(peer.toDoc());
 			}
 			newCommand.append("peers", docs);
-		} else if(connectedPeers.contains(hostPort)) {
-			newCommand.append("command", "HANDSHAKE_REFUSED");
+		} else if (connectedPeers.contains(hostPort)) {
+			newCommand.append("command", "CONNECTION_REFUSED");
 			newCommand.append("message", "peer already connected");
-		}
-		else {
+		} else {
 			// Accept connection, generate a Handshake response
 			newCommand.append("command", "HANDSHAKE_RESPONSE");
 			newCommand.append("hostPort", new HostPort(ip, port).toDoc());

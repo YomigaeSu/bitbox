@@ -41,9 +41,29 @@ public class ServerMain implements FileSystemObserver {
 			message.put("pathName", fileSystemEvent.name);
 
 			String protocol = message.toJSONString();
+			System.out.println(protocol);
 			log.info(protocol);
 
 			break;
+		case FILE_CREATE:
+
+			// transform fileSystemEvent into JSONObject
+			JSONObject message1 = new JSONObject();
+			message1.put("command", "FILE_CREATE_REQUEST");
+
+			Document document  = (Document) fileSystemEvent.fileDescriptor.toDoc();
+			// transform fileDesciptor Doc into JSONObject
+			JSONObject file = new JSONObject();
+			file.put("md5", document.get("md5"));
+			file.put("lastModified", document.get("lastModified"));
+			file.put("fileSize", document.get("fileSize"));
+			message1.put("fileDescriptor", file);
+
+			message1.put("pathName", fileSystemEvent.name);
+			
+			String protocol1 = message1.toJSONString();
+			
+			log.info(protocol1);
 		}
 	}
 
