@@ -16,6 +16,9 @@ import java.net.UnknownHostException;
 import java.security.NoSuchAlgorithmException;
 import java.sql.ClientInfoStatus;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,6 +52,7 @@ public class Peer {
 	private static int maximumIncommingConnections = Integer
 			.parseInt(Configuration.getConfigurationValue("maximumIncommingConnections"));
 	private static ArrayList<HostPort> connectedPeers = new ArrayList<>();
+	private static List<Socket> socketList = Collections.synchronizedList(new ArrayList<Socket>());
 
 	public static void main(String[] args) throws IOException, NumberFormatException, NoSuchAlgorithmException {
 		System.setProperty("java.util.logging.SimpleFormatter.format", "[%1$tc] %2$s %4$s: %5$s%n");
@@ -144,7 +148,7 @@ public class Peer {
 						// if we have message coming in
 						if (in.available() > 0) {
 							String received = in.readUTF();
-							System.out.println("COMMAND RECEIVED: " + received);
+							// System.out.println("COMMAND RECEIVED: " + received);
 							Document command = Document.parse(received);
 							// Handle the reply got from the server
 							String message;
@@ -174,6 +178,10 @@ public class Peer {
 								//message = command.get("command").toString();
 								System.out.println("we need send this message to serverMain and let it modify our local file");
 								break;
+								
+							case "CHECK":
+								// just ignore for now
+								break;
 
 							default:
 								System.out.println("Running: No matched protocol");
@@ -200,28 +208,70 @@ public class Peer {
 	}
 	
 	public static void listening(ServerMain ser) {
-		ServerSocketFactory factory = ServerSocketFactory.getDefault();
-		try (ServerSocket serverSocket = factory.createServerSocket(port)) {
-			int connectionCount = 0;
-			System.out.println("Server listening on " + ip + ":" + port + " for a connection");
-			while (connectionCount <= maximumIncommingConnections) {
-				// this step will block, if there is no more connection coming in
-				Socket clientSocket = serverSocket.accept();
-				// Check if the connection has reached maximum number
-				// TODO Change 10 to maxConnection Number in the configuration
-				connectionCount++;
-				//new Thread(() -> listening(ser)).start();
-				clientRunning(clientSocket, ser);
-				System.out.println(
-						"Working as serverPeer: Client conection number " + connectionCount + " accepted:");
+			//waiting for connection
+			new Thread(() -> waiting(ser)).start();
+			//checking unused socket
+			new Thread(() -> checkSocketList(ser)).start();
+	}
+	
+	public static void checkSocketList(ServerMain ser) {
+		Thread serverListening = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				DataOutputStream out;
+				while (true) {
+					Iterator<Socket> iter = socketList.iterator();
+					Iterator<HostPort> iter_hostPort = connectedPeers.iterator();
+					while(iter.hasNext() && iter_hostPort.hasNext()) {
+						Socket socket = iter.next();
+						HostPort hp = iter_hostPort.next();
+						try {
+							out = new DataOutputStream(socket.getOutputStream());
+							Document newCommand = new Document();
+							newCommand.append("command", "CHECK");
+							out.writeUTF(newCommand.toJson());
+							out.flush();
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							// e.printStackTrace();
+							System.out.println("not connected");
+							iter_hostPort.remove();
+							iter.remove();
+							socket = null;
+							
+						}
+					}	
+				}
 			}
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+		});
+		serverListening.run();
 	}
 	
 	
-
+	public static void waiting(ServerMain ser) {
+		Thread serverListening = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				ServerSocketFactory factory = ServerSocketFactory.getDefault();
+				try (ServerSocket serverSocket = factory.createServerSocket(port)) {
+					System.out.println("Server listening on " + ip + ":" + port + " for a connection");
+					while (socketList.size() <= maximumIncommingConnections) {
+						// this step will block, if there is no more connection coming in
+						Socket clientSocket = serverSocket.accept();
+						// Check if the connection has reached maximum number
+						// TODO Change 10 to maxConnection Number in the configuration
+						new Thread(() -> clientRunning(clientSocket, ser)).start();
+						socketList.add(clientSocket);
+						System.out.println(
+								"Working as serverPeer: Client conection number " + socketList.size() + " accepted:");
+					}
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		});
+		serverListening.start();
+	}
 
 	/**
 	 * A method that generates HANDSHAKE_RESPONSE in response to HANDSHAKE_REQUEST
