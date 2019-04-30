@@ -50,8 +50,8 @@ public class Peer {
 			.parseInt(Configuration.getConfigurationValue("peers").split(",")[0].split(":")[1]);
 	
 	//private static int maximumIncommingConnections = Integer.parseInt(Configuration.getConfigurationValue("maximumIncommingConnections"));
+	
 	private static ArrayList<HostPort> connectedPeers = new ArrayList<>();
-	//private static List<Socket> socketList = Collections.synchronizedList(new ArrayList<Socket>());
 
 	public static void main(String[] args) throws IOException, NumberFormatException, NoSuchAlgorithmException {
 		System.setProperty("java.util.logging.SimpleFormatter.format", "[%1$tc] %2$s %4$s: %5$s%n");
@@ -63,7 +63,8 @@ public class Peer {
 		
 		Socket socket = sentConnectionRequest(firstPeerIp, firstPeerPort, ser);
 		if ((socket != null) && (!socket.isClosed())) {
-			new Thread(() -> peerRunning(socket, ser)).start();
+			HostPort hostport = new HostPort(firstPeerIp, firstPeerPort);
+			new Thread(() -> peerRunning(socket, hostport, ser)).start();
 		}
 		
 	}
@@ -84,11 +85,9 @@ public class Peer {
 			out.flush();
 			System.out.println("COMMAND SENT: " + newCommand.toJson());
 		} catch (UnknownHostException e) {
-			System.out.println("e1");
 			//e.printStackTrace();
 		} catch (IOException e) {
 			//e.printStackTrace();
-			System.out.println("e2");
 		}
 		return socket;
 	}
@@ -101,7 +100,6 @@ public class Peer {
 				try (ServerSocket serverSocket = factory.createServerSocket(port)) {
 					System.out.println("Server listening on " + ip + ":" + port + " for a connection");
 					while (true) {
-						System.out.println("wait");
 						// this step will block, if there is no more connection coming in
 						Socket socket = serverSocket.accept();
 						System.out.println("here");
@@ -114,7 +112,6 @@ public class Peer {
 						String message;
 						switch (command.get("command").toString()) {
 						case "HANDSHAKE_REQUEST":
-							System.out.println("reached");
 							// here need to build a socket and start a thread: in handleHandshake
 							message = handleHandshake(socket, command, ser);
 							out.writeUTF(message);
@@ -132,7 +129,7 @@ public class Peer {
 	}
 	
 	
-	public static void peerRunning(Socket socket, ServerMain ser) {
+	public static void peerRunning(Socket socket, HostPort hostport, ServerMain ser) {
 		Thread thread = new Thread(new Runnable() {
 			@Override
 			public void run() {
@@ -140,6 +137,22 @@ public class Peer {
 					DataInputStream in = new DataInputStream(socket.getInputStream());
 					DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 					while (true) {
+						
+						// to check whether the other peer is shutdown or not
+						// Iterator<Socket> iter = socketList.iterator();
+						try {
+							out = new DataOutputStream(socket.getOutputStream());
+							Document newCommand = new Document();
+							newCommand.append("command", "CHECK");
+							out.writeUTF(newCommand.toJson());
+							out.flush();
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							// e.printStackTrace();
+							connectedPeers.remove(hostport);
+							break;
+						}
+						
 						// System.out.println(ser.eventList);
 						// if we have message coming in
 						if (in.available() > 0) {
@@ -206,7 +219,6 @@ public class Peer {
 		thread.start();
 	}
 	
-	
 	/**
 	 * A method that generates HANDSHAKE_RESPONSE in response to HANDSHAKE_REQUEST
 	 * The result is a marshaled JSONString
@@ -235,7 +247,7 @@ public class Peer {
 			newCommand.append("message", "peer already connected");
 		} else {
 			// Accept connection, generate a Handshake response
-			new Thread(() -> peerRunning(socket, ser)).start();
+			new Thread(() -> peerRunning(socket, hostPort, ser)).start();
 			
 			newCommand.append("command", "HANDSHAKE_RESPONSE");
 			newCommand.append("hostPort", new HostPort(ip, port).toDoc());
