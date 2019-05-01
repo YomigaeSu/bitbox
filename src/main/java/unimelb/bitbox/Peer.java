@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import javax.net.ServerSocketFactory;
@@ -38,20 +39,13 @@ import unimelb.bitbox.util.Document;
 
 public class Peer {
 	private static Logger log = Logger.getLogger(Peer.class.getName());
-
-	// Read local hostPort from configuration.properties
-	// Hard coded peer address for test purpose
-	// Peer1 settings: port 8111; peerPort 8112
-	// Peer2 settings: port 8112; peerPort 8111
 	private static String ip = Configuration.getConfigurationValue("advertisedName");
 	private static int port = Integer.parseInt(Configuration.getConfigurationValue("port"));
-	private static String firstPeerIp = "localhost";
-	private static int firstPeerPort = Integer
-			.parseInt(Configuration.getConfigurationValue("peers").split(",")[0].split(":")[1]);
 	
 	//private static int maximumIncommingConnections = Integer.parseInt(Configuration.getConfigurationValue("maximumIncommingConnections"));
 	
-	private static ArrayList<HostPort> connectedPeers = new ArrayList<>();
+	private static ArrayList<HostPort> connectedPeers = new ArrayList<HostPort>();
+	private static ArrayList<Socket> socketList = new ArrayList<Socket>();
 
 	public static void main(String[] args) throws IOException, NumberFormatException, NoSuchAlgorithmException {
 		System.setProperty("java.util.logging.SimpleFormatter.format", "[%1$tc] %2$s %4$s: %5$s%n");
@@ -61,20 +55,60 @@ public class Peer {
 		
 		new Thread(() -> waiting(ser)).start();
 		
-		Socket socket = sentConnectionRequest(firstPeerIp, firstPeerPort, ser);
-		if ((socket != null) && (!socket.isClosed())) {
-			HostPort hostport = new HostPort(firstPeerIp, firstPeerPort);
-			new Thread(() -> peerRunning(socket, hostport, ser)).start();
+		// sleep for 2 second
+		// need to read this from config
+		int synchornizeTimeInterval = 2;
+		
+		String[] peerList = Configuration.getConfigurationValue("peers").split(",");
+		for (String hostPort : peerList) {
+			String peerIP = hostPort.split(":")[0];
+			int peerPort = Integer.parseInt(hostPort.split(":")[1]);
+			
+			Socket socket = sentConnectionRequest(peerIP, peerPort, ser);
+			if ((socket != null) && (!socket.isClosed())) {
+				HostPort hostport = new HostPort(peerIP, peerPort);
+				new Thread(() -> peerReceiving(socket, hostport, ser)).start();
+				socketList.add(socket);
+				connectedPeers.add(hostport);
+			}	
 		}
 		
+		// loop method for synchronize: sleep for a time interval (unit: second)
+		sync(synchornizeTimeInterval, ser);
 	}
 	
-	// ========================== sent out a connection request ==================================================
+	public static void sync(int sleepTime, ServerMain ser) {
+		while (true) {
+			Iterator<Socket> iter = socketList.iterator();
+			System.out.println(socketList);
+			System.out.println(connectedPeers);
+			while (iter.hasNext()) {
+				Socket socket = iter.next();
+				// check difference
+				
+				// sent messages
+				peerSending(socket, ser);
+			}
+			// clean ser
+			ser.eventList.removeAll(ser.eventList);
+			
+			// sleep for a time
+			try {
+				TimeUnit.SECONDS.sleep(sleepTime);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+		}
+	}
+	
+	// ========================== sent out a connection request ===========================================
 	public static Socket sentConnectionRequest(String peerIp, int peerPort, ServerMain ser) {
 		Socket socket = null;
+		System.out.println("Sent connection request: Try connecting to " + peerIp + ":" + peerPort);
 		try {
 			socket = new Socket(peerIp, peerPort);
-			System.out.println("Sent connection request: Try connecting to " + peerIp + ":" + peerPort);
 			DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 			Document newCommand = new Document();
 			newCommand.append("command", "HANDSHAKE_REQUEST");
@@ -85,13 +119,16 @@ public class Peer {
 			out.flush();
 			System.out.println("COMMAND SENT: " + newCommand.toJson());
 		} catch (UnknownHostException e) {
+			System.out.println("connection failed");
 			//e.printStackTrace();
 		} catch (IOException e) {
+			System.out.println("connection failed");
 			//e.printStackTrace();
 		}
 		return socket;
 	}
 	
+	// ================================= waiting for new connection request ==================================
 	public static void waiting(ServerMain ser) {
 		Thread serverListening = new Thread(new Runnable() {
 			@Override
@@ -102,7 +139,6 @@ public class Peer {
 					while (true) {
 						// this step will block, if there is no more connection coming in
 						Socket socket = serverSocket.accept();
-						System.out.println("here");
 						DataInputStream in = new DataInputStream(socket.getInputStream());
 						DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 						
@@ -118,8 +154,8 @@ public class Peer {
 							out.flush();
 							System.out.println("COMMAND SENT: " + message);
 							break;
-					}
-				}
+					    }
+				    }
 				}catch (IOException e) {
 					e.printStackTrace();
 				}
@@ -128,8 +164,26 @@ public class Peer {
 		serverListening.start();
 	}
 	
+	public static void peerSending(Socket socket, ServerMain ser) {
+		try {
+			DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+			// if we have message need to send out
+			Iterator<String> iter = ser.eventList.iterator();
+			while (iter.hasNext()) {
+				String s = iter.next();
+				System.out.println(s);
+				out.writeUTF(s);
+				out.flush();
+			}
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			// e.printStackTrace();
+			System.out.println("e0");
+		}
+	}
 	
-	public static void peerRunning(Socket socket, HostPort hostport, ServerMain ser) {
+	// ==================== running the thread to receive, channel established between two sockets ====================
+	public static void peerReceiving(Socket socket, HostPort hostport, ServerMain ser) {
 		Thread thread = new Thread(new Runnable() {
 			@Override
 			public void run() {
@@ -138,8 +192,14 @@ public class Peer {
 					DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 					while (true) {
 						
+						try {
+							TimeUnit.SECONDS.sleep(1);
+						} catch (InterruptedException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+						
 						// to check whether the other peer is shutdown or not
-						// Iterator<Socket> iter = socketList.iterator();
 						try {
 							out = new DataOutputStream(socket.getOutputStream());
 							Document newCommand = new Document();
@@ -150,6 +210,7 @@ public class Peer {
 							// TODO Auto-generated catch block
 							// e.printStackTrace();
 							connectedPeers.remove(hostport);
+							socketList.remove(socket);
 							break;
 						}
 						
@@ -181,7 +242,8 @@ public class Peer {
 								// The serverPeer reached max number
 								// Read the the returned peer list, use BFS to connect one of them
 								socket.close();
-//								handleConnectionRefused(command);
+                                //handleConnectionRefused(command);
+								// need to add stuff here
 								break;
 								
 							case "FILE_MODIFY_REQUEST":
@@ -200,25 +262,17 @@ public class Peer {
 								break;
 							}
 						}
-						
-						// if we have message need to send out
-						if (ser.eventList.size()>0) {
-							String s = ser.eventList.get(0);
-							System.out.println(s);
-							out.writeUTF(s);
-							out.flush();
-							ser.eventList.remove(0);
-						}
 					}
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					e.printStackTrace();
+					// e.printStackTrace();
 				}
 			}
 		});
 		thread.start();
 	}
 	
+	// ============================== helper methods =======================================================
 	/**
 	 * A method that generates HANDSHAKE_RESPONSE in response to HANDSHAKE_REQUEST
 	 * The result is a marshaled JSONString
@@ -247,13 +301,14 @@ public class Peer {
 			newCommand.append("message", "peer already connected");
 		} else {
 			// Accept connection, generate a Handshake response
-			new Thread(() -> peerRunning(socket, hostPort, ser)).start();
+			new Thread(() -> peerReceiving(socket, hostPort, ser)).start();
 			
 			newCommand.append("command", "HANDSHAKE_RESPONSE");
 			newCommand.append("hostPort", new HostPort(ip, port).toDoc());
 
 			// Add the connecting peer to the connected peer list
 			connectedPeers.add(hostPort);
+			socketList.add(socket);
 			// TODO test print
 			checkConnectionNumber();
 			System.out.println("Current connected peers: " + connectedPeers);
@@ -281,3 +336,6 @@ public class Peer {
 		return hostPorts;
 	}
 }
+
+
+
