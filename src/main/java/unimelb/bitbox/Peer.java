@@ -57,10 +57,7 @@ public class Peer {
 		ServerMain ser = new ServerMain();
 		
 		new Thread(() -> waiting(ser)).start();
-		
-		// sleep for 2 second
-		// need to read this from config
-		int synchornizeTimeInterval = 2;
+		int synchornizeTimeInterval = 60; //Integer.parseInt(Configuration.getConfigurationValue("syncInterval"));
 		
 		String[] peerList = Configuration.getConfigurationValue("peers").split(",");
 		for (String hostPort : peerList) {
@@ -73,9 +70,9 @@ public class Peer {
 				new Thread(() -> peerReceiving(socket, hostport, ser)).start();
 				socketList.add(socket);
 				connectedPeers.add(hostport);
-			}	
+				sentLocalFiles(socket, ser);
+			}
 		}
-		
 		// loop method for synchronize: sleep for a time interval (unit: second)
 		sync(synchornizeTimeInterval, ser);
 	}
@@ -83,20 +80,12 @@ public class Peer {
 	public static void sync(int sleepTime, ServerMain ser) {
 		while (true) {
 			Iterator<Socket> iter = socketList.iterator();
-			//System.out.println(socketList);
-			//System.out.println(connectedPeers);
+			System.out.println(socketList);
+			System.out.println(connectedPeers);
 			while (iter.hasNext()) {
 				Socket socket = iter.next();
-				
-				// check difference
-				ArrayList<FileSystemEvent> pathevents = ser.fileSystemManager.generateSyncEvents();
-				for(FileSystemEvent pathevent : pathevents) {
-//					log.info(pathevent.toString());
-					ser.processFileSystemEvent(pathevent);
-				}
-				
-				// sent messages
-				peerSending(socket, ser);
+				// sent local files
+				sentLocalFiles(socket, ser);
 			}
 			// clean ser
 			ser.eventList.removeAll(ser.eventList);
@@ -109,6 +98,14 @@ public class Peer {
 				e.printStackTrace();
 			}
 		}
+	}
+	
+	public static void sentLocalFiles(Socket socket, ServerMain ser) {
+		ArrayList<FileSystemEvent> pathevents = ser.fileSystemManager.generateSyncEvents();
+		for(FileSystemEvent pathevent : pathevents) {
+			ser.processFileSystemEvent(pathevent);
+		}
+		peerSending(socket, ser);
 	}
 	
 	// ========================== sent out a connection request ===========================================
@@ -128,10 +125,8 @@ public class Peer {
 			System.out.println("COMMAND SENT: " + newCommand.toJson());
 		} catch (UnknownHostException e) {
 			System.out.println("connection failed");
-			//e.printStackTrace();
 		} catch (IOException e) {
 			System.out.println("connection failed");
-			//e.printStackTrace();
 		}
 		return socket;
 	}
@@ -184,9 +179,7 @@ public class Peer {
 				out.flush();
 			}
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			// e.printStackTrace();
-			System.out.println("e0");
+			System.out.println("can't send");
 		}
 	}
 	
@@ -198,6 +191,7 @@ public class Peer {
 				try {
 					DataInputStream in = new DataInputStream(socket.getInputStream());
 					DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+					
 					while (true) {
 						
 						try {
@@ -205,21 +199,6 @@ public class Peer {
 						} catch (InterruptedException e) {
 							// TODO Auto-generated catch block
 							e.printStackTrace();
-						}
-						
-						// to check whether the other peer is shutdown or not
-						try {
-							out = new DataOutputStream(socket.getOutputStream());
-							Document newCommand = new Document();
-							newCommand.append("command", "CHECK");
-							out.writeUTF(newCommand.toJson());
-							out.flush();
-						} catch (IOException e) {
-							// TODO Auto-generated catch block
-							// e.printStackTrace();
-							connectedPeers.remove(hostport);
-							socketList.remove(socket);
-							break;
 						}
 						
 						// System.out.println(ser.eventList);
@@ -332,6 +311,7 @@ public class Peer {
 								break;
 								
 							case "FILE_BYTES_REQUEST":
+								
 								String byte_response;
 								try {
 									byte_response = ser.byte_response(command);
@@ -358,10 +338,14 @@ public class Peer {
 							}
 						}
 					}
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					// e.printStackTrace();
-				}
+				    } catch (IOException e) {
+						// TODO Auto-generated catch block
+						// e.printStackTrace();
+						
+						// to check whether the other peer is shutdown or not
+						connectedPeers.remove(hostport);
+						socketList.remove(socket);
+					}
 			}
 		});
 		thread.start();
@@ -392,7 +376,7 @@ public class Peer {
 			}
 			newCommand.append("peers", docs);
 		} else if (connectedPeers.contains(hostPort)) {
-			newCommand.append("command", "CONNECTION_REFUSED");
+			newCommand.append("command", "INVALID_PROTOCOL");
 			newCommand.append("message", "peer already connected");
 		} else {
 			// Accept connection, generate a Handshake response
@@ -404,6 +388,8 @@ public class Peer {
 			// Add the connecting peer to the connected peer list
 			connectedPeers.add(hostPort);
 			socketList.add(socket);
+			sentLocalFiles(socket, ser);
+			
 			// TODO test print
 			checkConnectionNumber();
 			System.out.println("Current connected peers: " + connectedPeers);
@@ -511,6 +497,3 @@ public class Peer {
 		return hostPorts;
 	}
 }
-
-
-

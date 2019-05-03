@@ -142,6 +142,7 @@ public class ServerMain implements FileSystemObserver {
 		long lastModified = (long)des.get("lastModified");
 		String md5 = (String)des.get("md5");
 		long blockSize =  Long.parseLong(Configuration.getConfigurationValue("blockSize"));
+		if (fileSystemManager.fileNameExists(pathName) == false) {
 		if (fileSystemManager.createFileLoader(pathName, md5, length, lastModified) == true) {
 			if (fileSystemManager.checkWriteComplete(pathName) == true ) {
 				response.append("command", "FILE_CREATE_RESPONSE");
@@ -169,7 +170,30 @@ public class ServerMain implements FileSystemObserver {
 			response.append("fileDescriptor", des);
 			response.append("pathName", pathName);
 			response.append("message", "there was a problem creating the file");
-			response.append("status", true);
+			response.append("status", true); 
+		}
+		} else {
+			if (fileSystemManager.modifyFileLoader(pathName, md5, length, lastModified) == true) {
+				if(blockSize > length) {
+					response.append("command", "FILE_BYTES_REQUEST");			
+					response.append("fileDescriptor", des);
+					response.append("pathName", pathName);
+					response.append("position", 0);
+					response.append("length", length);
+				} else {
+					response.append("command", "FILE_BYTES_REQUEST");			
+					response.append("fileDescriptor", des);
+					response.append("pathName", pathName);
+					response.append("position", 0);
+					response.append("length", blockSize);
+				}
+			} else {
+				response.append("command", "FILE_CREATE_RESPONSE");
+				response.append("fileDescriptor", des);
+				response.append("pathName", pathName);
+				response.append("message", "111there was a problem creating the file");
+				response.append("status", false);
+			}
 		}
 		return response.toJson();
 		
