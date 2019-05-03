@@ -55,9 +55,9 @@ public class Peer {
 		log.info("BitBox Peer starting...");
 		Configuration.getConfiguration();
 		ServerMain ser = new ServerMain();
+		int synchornizeTimeInterval = Integer.parseInt(Configuration.getConfigurationValue("syncInterval"));
 		
 		new Thread(() -> waiting(ser)).start();
-		int synchornizeTimeInterval = 60; //Integer.parseInt(Configuration.getConfigurationValue("syncInterval"));
 		
 		String[] peerList = Configuration.getConfigurationValue("peers").split(",");
 		for (String hostPort : peerList) {
@@ -74,22 +74,11 @@ public class Peer {
 			}
 		}
 		// loop method for synchronize: sleep for a time interval (unit: second)
-		sync(synchornizeTimeInterval, ser);
+		// sync(synchornizeTimeInterval, ser);
 	}
 	
 	public static void sync(int sleepTime, ServerMain ser) {
 		while (true) {
-			Iterator<Socket> iter = socketList.iterator();
-			System.out.println(socketList);
-			System.out.println(connectedPeers);
-			while (iter.hasNext()) {
-				Socket socket = iter.next();
-				// sent local files
-				sentLocalFiles(socket, ser);
-			}
-			// clean ser
-			ser.eventList.removeAll(ser.eventList);
-			
 			// sleep for a time
 			try {
 				TimeUnit.SECONDS.sleep(sleepTime);
@@ -97,6 +86,17 @@ public class Peer {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
+			
+			Iterator<Socket> iter = socketList.iterator();
+			//System.out.println(socketList);
+			//System.out.println(connectedPeers);
+			while (iter.hasNext()) {
+				Socket socket = iter.next();
+				// sent local files
+				sentLocalFiles(socket, ser);
+			}
+			// clean ser
+			ser.eventList.removeAll(ser.eventList);
 		}
 	}
 	
@@ -114,18 +114,22 @@ public class Peer {
 		System.out.println("Sent connection request: Try connecting to " + peerIp + ":" + peerPort);
 		try {
 			socket = new Socket(peerIp, peerPort);
-			DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+			BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"));
+			//DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 			Document newCommand = new Document();
 			newCommand.append("command", "HANDSHAKE_REQUEST");
 			// my own host port info
 			HostPort hostPort = new HostPort(ip, port);
 			newCommand.append("hostPort", (Document) hostPort.toDoc());
-			out.writeUTF(newCommand.toJson());
+			//out.writeUTF(newCommand.toJson());
+			out.write(newCommand.toJson() + "\n");
 			out.flush();
 			System.out.println("COMMAND SENT: " + newCommand.toJson());
 		} catch (UnknownHostException e) {
+			socket = null;
 			System.out.println("connection failed");
 		} catch (IOException e) {
+			socket = null;
 			System.out.println("connection failed");
 		}
 		return socket;
@@ -142,10 +146,12 @@ public class Peer {
 					while (true) {
 						// this step will block, if there is no more connection coming in
 						Socket socket = serverSocket.accept();
-						DataInputStream in = new DataInputStream(socket.getInputStream());
-						DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+						BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"));
+						BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+						//DataInputStream in = new DataInputStream(socket.getInputStream());
+						//DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 						
-						String received = in.readUTF();
+						String received = in.readLine();
 						Document command = Document.parse(received);
 						// Handle the reply got from the server
 						String message;
@@ -153,7 +159,7 @@ public class Peer {
 						case "HANDSHAKE_REQUEST":
 							// here need to build a socket and start a thread: in handleHandshake
 							message = handleHandshake(socket, command, ser);
-							out.writeUTF(message);
+							out.write(message + "\n");
 							out.flush();
 							System.out.println("COMMAND SENT: " + message);
 							break;
@@ -169,13 +175,14 @@ public class Peer {
 	
 	public static void peerSending(Socket socket, ServerMain ser) {
 		try {
-			DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+			//DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+			BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"));
 			// if we have message need to send out
 			Iterator<String> iter = ser.eventList.iterator();
 			while (iter.hasNext()) {
 				String s = iter.next();
 				System.out.println(s);
-				out.writeUTF(s);
+				out.write(s + "\n");
 				out.flush();
 			}
 		} catch (IOException e) {
@@ -189,8 +196,8 @@ public class Peer {
 			@Override
 			public void run() {
 				try {
-					DataInputStream in = new DataInputStream(socket.getInputStream());
-					DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+					BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"));
+					BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
 					
 					while (true) {
 						
@@ -201,20 +208,19 @@ public class Peer {
 							e.printStackTrace();
 						}
 						
-						// System.out.println(ser.eventList);
-						// if we have message coming in
-						if (in.available() > 0) {
-							String received = in.readUTF();
+						String received = null;
+						if ((received = in.readLine()) != null && received != "\n") {
+							System.out.println(received);
+							//String received = in.readUTF();
 							Document command = Document.parse(received);
 							// Handle the reply got from the server
 							String message;
-							//System.out.println(command.get("command").toString());
+							System.out.println(command.get("command").toString());
 							switch (command.get("command").toString()) {
-							
 							
 							case "HANDSHAKE_REQUEST":
 								message = handleHandshake(socket, command, ser);
-								out.writeUTF(message);
+								out.write(message + "\n");
 								out.flush();
 								System.out.println("COMMAND SENT: " + message);
 								break;
@@ -230,17 +236,17 @@ public class Peer {
 								// The serverPeer reached max number
 								// Read the the returned peer list, use BFS to connect one of them
 								socket.close();
-								handleConnectionRefused(command, ser);
+								// handleConnectionRefused(command, ser);
 								break;
 								
 							case "FILE_MODIFY_REQUEST":					
 								try {
 									String reply4 = ser.file_modify_response(command);
-									out.writeUTF(reply4);
+									out.write(reply4 + "\n");
 									out.flush();
 									System.out.println("COMMAND SENT: " + reply4);
 									String reply5 = ser.byte_request(command);
-									out.writeUTF(reply5);
+									out.write(reply5 + "\n");
 									out.flush();
 									System.out.println("COMMAND SENT: " + reply5);
 								} catch (NoSuchAlgorithmException e2) {
@@ -252,7 +258,7 @@ public class Peer {
 							case "FILE_CREATE_REQUEST":
 								try {
 									String reply1 = ser.file_create_response(command);
-									out.writeUTF(reply1);
+									out.write(reply1 + "\n");
 									out.flush();
 									System.out.println("COMMAND SENT: " + reply1);
 									
@@ -274,21 +280,21 @@ public class Peer {
 								
 							case "FILE_DELETE_REQUEST":
 								String reply = ser.delete_file(command);
-								out.writeUTF(reply);
+								out.write(reply + "\n");
 								out.flush();
 								System.out.println("COMMAND SENT: " + reply);		
 								break;
 								
 							case "DIRECTORY_DELETE_REQUEST":
 								String reply1 = ser.delete_directory(command);
-								out.writeUTF(reply1);
+								out.write(reply1 + "\n");
 								out.flush();
 								System.out.println("COMMAND SENT: " + reply1);
 								break;
 								
 							case "DIRECTORY_CREATE_REQUEST":
 								String reply2 = ser.create_directory(command);
-								out.writeUTF(reply2);
+								out.write(reply2 + "\n");
 								out.flush();
 								System.out.println("COMMAND SENT: " + reply2);
 								break;
@@ -299,7 +305,7 @@ public class Peer {
 									if(reply3.equals("complete")) {
 										break;
 									}else {
-									out.writeUTF(reply3);
+									out.write(reply3 + "\n");
 									out.flush();
 									System.out.println("COMMAND SENT: " + reply3);
 									}
@@ -315,7 +321,7 @@ public class Peer {
 								String byte_response;
 								try {
 									byte_response = ser.byte_response(command);
-									out.writeUTF(byte_response);
+									out.write(byte_response + "\n");
 									out.flush();
 									System.out.println("COMMAND SENT: " + byte_response);
 								} catch (NoSuchAlgorithmException e) {
@@ -325,9 +331,6 @@ public class Peer {
 								}
 								break;
 								
-							case "CHECK":
-								// ignore for now
-								break;
 							case "INVALID_PROTOCOL":
 								break;
 								
