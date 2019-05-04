@@ -170,10 +170,11 @@ public class ServerMain implements FileSystemObserver {
 			response.append("fileDescriptor", des);
 			response.append("pathName", pathName);
 			response.append("message", "there was a problem creating the file");
-			response.append("status", true); 
+			response.append("status", false); 
 		}
 		} else {
 			if (fileSystemManager.modifyFileLoader(pathName, md5, length, lastModified) == true) {
+				if (fileSystemManager.checkWriteComplete(pathName) == false ) {
 				if(blockSize > length) {
 					response.append("command", "FILE_BYTES_REQUEST");			
 					response.append("fileDescriptor", des);
@@ -187,13 +188,21 @@ public class ServerMain implements FileSystemObserver {
 					response.append("position", 0);
 					response.append("length", blockSize);
 				}
+				} else {
+					response.append("command", "FILE_CREATE_RESPONSE");
+					response.append("fileDescriptor", des);
+					response.append("pathName", pathName);
+					response.append("message", "the file exist");
+					response.append("status", false);
+				}
 			} else {
 				response.append("command", "FILE_CREATE_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", pathName);
-				response.append("message", "111there was a problem creating the file");
+				response.append("message", "there was a problem creating the file");
 				response.append("status", false);
 			}
+			
 		}
 		return response.toJson();
 		

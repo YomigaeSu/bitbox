@@ -45,10 +45,9 @@ public class Peer {
 	private static String ip = Configuration.getConfigurationValue("advertisedName");
 	private static int port = Integer.parseInt(Configuration.getConfigurationValue("port"));
 	
-	//private static int maximumIncommingConnections = Integer.parseInt(Configuration.getConfigurationValue("maximumIncommingConnections"));
-	
 	private static ArrayList<HostPort> connectedPeers = new ArrayList<HostPort>();
 	private static ArrayList<Socket> socketList = new ArrayList<Socket>();
+	private static Queue<HostPort> hostPortsQueue = new LinkedList<>();
 
 	public static void main(String[] args) throws IOException, NumberFormatException, NoSuchAlgorithmException {
 		System.setProperty("java.util.logging.SimpleFormatter.format", "[%1$tc] %2$s %4$s: %5$s%n");
@@ -58,6 +57,10 @@ public class Peer {
 		int synchornizeTimeInterval = Integer.parseInt(Configuration.getConfigurationValue("syncInterval"));
 		
 		new Thread(() -> waiting(ser)).start();
+		ArrayList<FileSystemEvent> pathevents = ser.fileSystemManager.generateSyncEvents();
+		for(FileSystemEvent pathevent : pathevents) {
+			ser.processFileSystemEvent(pathevent);
+		}
 		
 		String[] peerList = Configuration.getConfigurationValue("peers").split(",");
 		for (String hostPort : peerList) {
@@ -67,47 +70,52 @@ public class Peer {
 			Socket socket = sentConnectionRequest(peerIP, peerPort, ser);
 			if ((socket != null) && (!socket.isClosed())) {
 				HostPort hostport = new HostPort(peerIP, peerPort);
-				new Thread(() -> peerReceiving(socket, hostport, ser)).start();
+				new Thread(() -> peerRunning(socket, hostport, ser)).start();
 				socketList.add(socket);
 				connectedPeers.add(hostport);
-				sentLocalFiles(socket, ser);
+				peerSending(socket, ser);
 			}
 		}
-		// loop method for synchronize: sleep for a time interval (unit: second)
+		ser.eventList.removeAll(ser.eventList);
 		sync(synchornizeTimeInterval, ser);
 	}
 	
+
+	//  ================================ sync ==================================================
 	public static void sync(int sleepTime, ServerMain ser) {
+		int count = 0;
 		while (true) {
-			// sleep for a time
-			try {
-				TimeUnit.SECONDS.sleep(sleepTime);
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			
-			Iterator<Socket> iter = socketList.iterator();
 			//System.out.println(socketList);
 			//System.out.println(connectedPeers);
-			while (iter.hasNext()) {
-				Socket socket = iter.next();
-				// sent local files
-				sentLocalFiles(socket, ser);
+			try {
+				TimeUnit.SECONDS.sleep(1);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
 			}
-			// clean ser
-			ser.eventList.removeAll(ser.eventList);
+			count++;
+			if (count == sleepTime) {
+				ArrayList<FileSystemEvent> pathevents = ser.fileSystemManager.generateSyncEvents();
+				for(FileSystemEvent pathevent : pathevents) {
+					ser.processFileSystemEvent(pathevent);
+				}
+				Iterator<Socket> iter = socketList.iterator();
+				while (iter.hasNext()) {
+					Socket socket = iter.next();
+					peerSending(socket, ser);
+				}
+				ser.eventList.removeAll(ser.eventList);
+				count = 0;
+			} else {
+				Iterator<Socket> iter = socketList.iterator();
+				while (iter.hasNext()) {
+					Socket socket = iter.next();
+					peerSending(socket, ser);
+				}
+				ser.eventList.removeAll(ser.eventList);
+			}
 		}
 	}
-	
-	public static void sentLocalFiles(Socket socket, ServerMain ser) {
-		ArrayList<FileSystemEvent> pathevents = ser.fileSystemManager.generateSyncEvents();
-		for(FileSystemEvent pathevent : pathevents) {
-			ser.processFileSystemEvent(pathevent);
-		}
-		peerSending(socket, ser);
-	}
-	
+
 	// ========================== sent out a connection request ===========================================
 	public static Socket sentConnectionRequest(String peerIp, int peerPort, ServerMain ser) {
 		Socket socket = null;
@@ -115,15 +123,29 @@ public class Peer {
 		try {
 			socket = new Socket(peerIp, peerPort);
 			BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"));
-			//DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
 			Document newCommand = new Document();
 			newCommand.append("command", "HANDSHAKE_REQUEST");
 			// my own host port info
 			HostPort hostPort = new HostPort(ip, port);
 			newCommand.append("hostPort", (Document) hostPort.toDoc());
-			//out.writeUTF(newCommand.toJson());
 			out.write(newCommand.toJson() + "\n");
 			out.flush();
+			
+			String received = in.readLine();
+			Document command = Document.parse(received);
+			
+			System.out.println(command.get("command").toString());
+			switch (command.get("command").toString()) {
+				case "HANDSHAKE_RESPONSE":
+					break;
+				case "CONNECTION_REFUSED":
+					socket.close();
+					socket = null;
+					socket = solveConnectionRefused(command, ser);
+					break;
+			}
+			
 			System.out.println("COMMAND SENT: " + newCommand.toJson());
 		} catch (UnknownHostException e) {
 			socket = null;
@@ -133,6 +155,27 @@ public class Peer {
 			System.out.println("connection failed");
 		}
 		return socket;
+	}
+	
+	
+	private static Socket solveConnectionRefused(Document command, ServerMain ser) {
+		@SuppressWarnings("unchecked")
+		ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
+		for (Document peer : peers) {
+			System.out.println(peer.toJson());
+			String h = peer.getString("host");
+			String p = peer.get("port").toString();
+			hostPortsQueue.offer(new HostPort(h, Integer.parseInt(p)));
+		}
+		while (!hostPortsQueue.isEmpty()) {
+			HostPort hostport = hostPortsQueue.poll();
+			Socket socket = sentConnectionRequest(hostport.host, hostport.port, ser);
+			if ((socket != null) && (!socket.isClosed())) {
+				hostPortsQueue.removeAll(hostPortsQueue);
+				return socket;
+			}
+		}
+		return null;
 	}
 	
 	// ================================= waiting for new connection request ==================================
@@ -164,34 +207,35 @@ public class Peer {
 					    }
 				    }
 				}catch (IOException e) {
-					e.printStackTrace();
+					//e.printStackTrace();
+					System.out.println("e0");
 				}
 			}
 		});
 		serverListening.start();
 	}
 	
-	public static void peerSending(Socket socket, ServerMain ser) {
+	public static Boolean peerSending(Socket socket, ServerMain ser) {
 		try {
-			//DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 			BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"));
 			// if we have message need to send out
 			Iterator<String> iter = ser.eventList.iterator();
 			while (iter.hasNext()) {
 				String s = iter.next();
-				
 				out.write(s + "\n");
 				out.flush();
-				//System.out.println(s);
 			}
 		} catch (IOException e) {
 			System.out.println("can't send");
+			return false;
 		}
+		return true;
 	}
 	
 	// ==================== running the thread to receive, channel established between two sockets ====================
-	public static void peerReceiving(Socket socket, HostPort hostport, ServerMain ser) {
-		Thread thread = new Thread(new Runnable() {
+	public static void peerRunning(Socket socket, HostPort hostport, ServerMain ser) {
+		
+		Thread receive = new Thread(new Runnable() {
 			@Override
 			public void run() {
 				try {
@@ -199,15 +243,11 @@ public class Peer {
 					BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
 					
 					while (true) {
-						
 						String received = in.readLine();
-							
-							// System.out.println(received);
-							Document command = Document.parse(received);
-							// Handle the reply got from the server
-							String message;
-							System.out.println(command.get("command").toString());
-							switch (command.get("command").toString()) {
+						Document command = Document.parse(received);
+						String message;
+						System.out.println(command.get("command").toString());
+						switch (command.get("command").toString()) {
 								
 								case "HANDSHAKE_REQUEST":
 									message = handleHandshake(socket, command, ser);
@@ -224,10 +264,7 @@ public class Peer {
 									break;
 
 								case "CONNECTION_REFUSED":
-									// The serverPeer reached max number
-									// Read the the returned peer list, use BFS to connect one of them
 									socket.close();
-									// handleConnectionRefused(command, ser);
 									break;
 									
 								case "FILE_MODIFY_REQUEST":					
@@ -241,7 +278,6 @@ public class Peer {
 										out.flush();
 										System.out.println("COMMAND SENT: " + reply5);
 									} catch (NoSuchAlgorithmException e2) {
-										// TODO Auto-generated catch block
 										e2.printStackTrace();
 									}
 									break;
@@ -254,7 +290,6 @@ public class Peer {
 										System.out.println("COMMAND SENT: " + reply1);
 										
 									} catch (NoSuchAlgorithmException e1) {
-										// TODO Auto-generated catch block
 										e1.printStackTrace();
 									}
 									break;
@@ -293,10 +328,11 @@ public class Peer {
 								case "FILE_BYTES_RESPONSE":
 									try {
 										String reply3 = ser.write_byte(command);
+										System.out.println(reply3);
 										if(reply3.equals("complete")) {
 											break;
 										}else {
-										out.write(reply3 + "\n");
+										out.write(reply3+"\n");
 										out.flush();
 										System.out.println("COMMAND SENT: " + reply3);
 										}
@@ -311,8 +347,9 @@ public class Peer {
 									
 									String byte_response;
 									try {
+										System.out.println(command.toJson());
 										byte_response = ser.byte_response(command);
-										out.write(byte_response + "\n");
+										out.write(byte_response+"\n");
 										out.flush();
 										System.out.println("COMMAND SENT: " + byte_response);
 									} catch (NoSuchAlgorithmException e) {
@@ -334,14 +371,12 @@ public class Peer {
 					} 
 					
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					// e.printStackTrace();
 					connectedPeers.remove(hostport);
 					socketList.remove(socket);
 				}
 			}
 		});
-		thread.start();
+		receive.start();
 	}
 	
 	// ============================== helper methods =======================================================
@@ -373,7 +408,7 @@ public class Peer {
 			newCommand.append("message", "peer already connected");
 		} else {
 			// Accept connection, generate a Handshake response
-			new Thread(() -> peerReceiving(socket, hostPort, ser)).start();
+			new Thread(() -> peerRunning(socket, hostPort, ser)).start();
 			
 			newCommand.append("command", "HANDSHAKE_RESPONSE");
 			newCommand.append("hostPort", new HostPort(ip, port).toDoc());
@@ -381,9 +416,7 @@ public class Peer {
 			// Add the connecting peer to the connected peer list
 			connectedPeers.add(hostPort);
 			socketList.add(socket);
-			sentLocalFiles(socket, ser);
 			
-			// TODO test print
 			checkConnectionNumber();
 			System.out.println("Current connected peers: " + connectedPeers);
 		}
@@ -395,89 +428,8 @@ public class Peer {
 		return connectedPeers.size();
 	}
 	
-	
-	
-	
-	private static void handleConnectionRefused(Document command, ServerMain ser) {
-		Queue<HostPort> hostPorts = new LinkedList<>();
 
-		Thread t1 = new Thread(new Runnable() {
-			boolean interrupted = false;
 
-			@Override
-			public void run() {
-				// Add all peers in to the reconnection list
-				ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
-				for (Document peer : peers) {
-					hostPorts.offer(new HostPort(peer));
-				}
-				// Connect to the peers in the queue until it's empty
-				while (!hostPorts.isEmpty()) {
-					HostPort hostPort = hostPorts.poll();
-					
-					// System.out.println(hostPorts);
-					Socket socket = sentConnectionRequest(hostPort.host, hostPort.port, ser);
-					if ((socket != null) && (!socket.isClosed())) {
-						// Waiting reply from the peer
-						try {
-							DataInputStream in = new DataInputStream(socket.getInputStream());
-							while (!interrupted) {
-								if (in.available() > 0) {
-									String received = in.readUTF();
-									System.out.println("COMMAND RECEIVED" + received);
-									Document reply = Document.parse(received);
-									switch (reply.getString("command")) {
-									case "HANDSHAKE_RESPONSE":
-										// Handshake has been successful, add this peer to the list
-										HostPort connectedHostPort = new HostPort((Document) reply.get("hostPort"));
-										if (!connectedPeers.contains(connectedHostPort)) {
-											connectedPeers.add(connectedHostPort);
-											socketList.add(socket);
-											hostPorts.clear();
-											interrupted = true;
-										}
-										break;
-
-									case "CONNECTION_REFUSED":
-										peers = (ArrayList<Document>) reply.get("peers");
-										if (!peers.isEmpty()) {
-											for (Document peer : peers) {
-												HostPort hostPort1 = new HostPort(peer);
-												if (!hostPorts.contains(hostPort1)) {
-													hostPorts.offer(hostPort1);
-												}
-											}
-										}
-										socket.close();
-										break;
-
-									default:
-										System.out.println("No matched protocol: " + received);
-										break;
-									}
-
-								}
-							}
-
-						} catch (Exception e) {
-							e.printStackTrace();
-						}
-					}
-				}
-
-			}
-			// The queue is now empty
-		});
-		t1.start();
-
-	}
-	
-	
-	
-	
-	/**
-	 * @return The list of HostPort stored in configuration
-	 */
 	public static ArrayList<HostPort> getPeerList() {
 		// Read configuration.properties
 		String[] peers = Configuration.getConfigurationValue("peers").split(",");
