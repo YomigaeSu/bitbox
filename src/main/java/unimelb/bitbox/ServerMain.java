@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.util.logging.Logger;
@@ -12,6 +13,7 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
+import antlr.CharBuffer;
 import unimelb.bitbox.util.Configuration;
 import unimelb.bitbox.util.Document;
 import unimelb.bitbox.util.FileSystemManager;
@@ -278,9 +280,7 @@ public class ServerMain implements FileSystemObserver {
 		response.append("status", true);
 		
 		ByteBuffer sendingBuffer = fileSystemManager.readFile((String)des.get("md5"), (long)command.get("position"), (long)command.get("length"));
-		sendingBuffer.flip();
-		String s = StandardCharsets.UTF_8.decode(sendingBuffer).toString();
-		String encoded = Base64.getEncoder().encodeToString(s.getBytes());
+		String encoded = Base64.getEncoder().encodeToString(sendingBuffer.array());
 		response.append("content", encoded);
 		
 		return response.toJson();
@@ -291,9 +291,10 @@ public class ServerMain implements FileSystemObserver {
 		String result = "";
 		Document des = (Document)message.get("fileDescriptor");
 		String buffer_str = (String)message.get("content");
+		
 		byte [] barr = Base64.getDecoder().decode(buffer_str);
-		String decoded = new String(barr);
-		ByteBuffer content = Charset.forName("UTF-8").encode(decoded);
+		
+		ByteBuffer content = ByteBuffer.wrap(barr);
 		long position = (long)message.get("position") + (long)message.get("length");
 		
 		if (fileSystemManager.writeFile((String)message.get("pathName"), content, (long)message.get("position")) == true) {
