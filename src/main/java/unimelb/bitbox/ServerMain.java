@@ -51,7 +51,7 @@ public class ServerMain implements FileSystemObserver {
 			fileDescriptor.put("fileSize", document.get("fileSize"));
 			
 			message.put("fileDescriptor", fileDescriptor);
-			message.put("pathName", fileSystemEvent.name);
+			message.put("pathName", fileSystemEvent.pathName);
 
 			String protocol = message.toJSONString();
 			log.info(protocol);
@@ -75,7 +75,7 @@ public class ServerMain implements FileSystemObserver {
 			 fileDescriptor1.put("fileSize", document1.get("fileSize"));
 			 
 			 message1.put("fileDescriptor", fileDescriptor1);
-			 message1.put("pathName", fileSystemEvent.name);
+			 message1.put("pathName", fileSystemEvent.pathName);
 			      
 			 String protocol1 = message1.toJSONString();
 		     log.info(protocol1);
@@ -98,7 +98,7 @@ public class ServerMain implements FileSystemObserver {
 			fileDescriptor2.put("filesize", document2.get("fileSize"));
 			
 			message2.put("fileDescriptor", fileDescriptor2);
-			message2.put("pathName", fileSystemEvent.name);
+			message2.put("pathName", fileSystemEvent.pathName);
 			
 			String protocol2 = message2.toJSONString();
 			log.info(protocol2);
@@ -111,7 +111,7 @@ public class ServerMain implements FileSystemObserver {
 			//transform fileSystemEvent to JSONObject 
 			JSONObject message3 = new JSONObject();
 			message3.put("command", "DIRECTORY_CREATE_REQUEST");
-			message3.put("pathName", fileSystemEvent.name);
+			message3.put("pathName", fileSystemEvent.pathName);
 			
 			String protocol3 = message3.toJSONString();
 			log.info(protocol3);
@@ -123,7 +123,7 @@ public class ServerMain implements FileSystemObserver {
 			
 			//transform fileSystemEvent to JSONObject 
 			JSONObject message4 = new JSONObject();
-			message4.put("pathName", fileSystemEvent.name);
+			message4.put("pathName", fileSystemEvent.pathName);
 			message4.put("command", "DIRECTORY_DELETE_REQUEST");
 			
 			String protocol4 = message4.toJSONString();
@@ -322,9 +322,39 @@ public class ServerMain implements FileSystemObserver {
 			}	else if (((long)message.get("position") == ((long)des.get("fileSize")-(long)message.get("length")))) {
 				if (fileSystemManager.checkWriteComplete((String)message.get("pathName")) == true ) {
 					result  = "complete";
-				} 
+				} else {
+					Document response = new Document();		
+
+					response.append("command", "FILE_CREATE_RESPONSE");
+					response.append("fileDescriptor", des);
+					response.append("pathName", (String)message.get("pathName"));
+					response.append("message", "there was a problem creating the file1");
+					response.append("status", false);
+					
+					result = response.toJson();
+				}
+			} else {
+				Document response = new Document();		
+
+				response.append("command", "FILE_CREATE_RESPONSE");
+				response.append("fileDescriptor", des);
+				response.append("pathName", (String)message.get("pathName"));
+				response.append("message", "there was a problem creating the file2");
+				response.append("status", false);
+				
+				result = response.toJson();
 			}
-			} 
+			} else {
+				Document response = new Document();		
+
+				response.append("command", "FILE_CREATE_RESPONSE");
+				response.append("fileDescriptor", des);
+				response.append("pathName", (String)message.get("pathName"));
+				response.append("message", "there was a problem creating the file3");
+				response.append("status", false);
+				
+				result = response.toJson();
+			}
 		return result;
 	}
 	

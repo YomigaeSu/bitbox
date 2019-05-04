@@ -387,6 +387,27 @@ public class Peer {
 	 * @param command The massage received
 	 *
 	 */
+	public static void waitSync(Socket socket, ServerMain ser) {
+		Thread tw = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					TimeUnit.SECONDS.sleep(3);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+				ArrayList<FileSystemEvent> pathevents = ser.fileSystemManager.generateSyncEvents();
+				for(FileSystemEvent pathevent : pathevents) {
+					ser.processFileSystemEvent(pathevent);
+				}
+				peerSending(socket, ser);
+				ser.eventList.removeAll(ser.eventList);
+				
+			}});
+		tw.start();
+	}
+	
+	
 	private static String handleHandshake(Socket socket, Document command, ServerMain ser) {
 		HostPort hostPort = new HostPort((Document) command.get("hostPort"));
 
@@ -412,6 +433,8 @@ public class Peer {
 			
 			newCommand.append("command", "HANDSHAKE_RESPONSE");
 			newCommand.append("hostPort", new HostPort(ip, port).toDoc());
+			
+			new Thread(() -> waitSync(socket, ser)).start();
 
 			// Add the connecting peer to the connected peer list
 			connectedPeers.add(hostPort);
