@@ -74,7 +74,7 @@ public class Peer {
 			}
 		}
 		// loop method for synchronize: sleep for a time interval (unit: second)
-		// sync(synchornizeTimeInterval, ser);
+		sync(synchornizeTimeInterval, ser);
 	}
 	
 	public static void sync(int sleepTime, ServerMain ser) {
@@ -148,8 +148,6 @@ public class Peer {
 						Socket socket = serverSocket.accept();
 						BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"));
 						BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
-						//DataInputStream in = new DataInputStream(socket.getInputStream());
-						//DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 						
 						String received = in.readLine();
 						Document command = Document.parse(received);
@@ -181,9 +179,10 @@ public class Peer {
 			Iterator<String> iter = ser.eventList.iterator();
 			while (iter.hasNext()) {
 				String s = iter.next();
-				System.out.println(s);
+				
 				out.write(s + "\n");
 				out.flush();
+				//System.out.println(s);
 			}
 		} catch (IOException e) {
 			System.out.println("can't send");
@@ -201,154 +200,145 @@ public class Peer {
 					
 					while (true) {
 						
-						try {
-							TimeUnit.SECONDS.sleep(1);
-						} catch (InterruptedException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-						
-						String received = null;
-						if ((received = in.readLine()) != null && received != "\n") {
-							System.out.println(received);
-							//String received = in.readUTF();
+						String received = in.readLine();
+							
+							// System.out.println(received);
 							Document command = Document.parse(received);
 							// Handle the reply got from the server
 							String message;
 							System.out.println(command.get("command").toString());
 							switch (command.get("command").toString()) {
-							
-							case "HANDSHAKE_REQUEST":
-								message = handleHandshake(socket, command, ser);
-								out.write(message + "\n");
-								out.flush();
-								System.out.println("COMMAND SENT: " + message);
-								break;
 								
-							case "HANDSHAKE_RESPONSE":
-								HostPort connectedHostPort = new HostPort((Document) command.get("hostPort"));
-								if (!connectedPeers.contains(connectedHostPort)) {
-									connectedPeers.add(connectedHostPort);
-								}
-								break;
+								case "HANDSHAKE_REQUEST":
+									message = handleHandshake(socket, command, ser);
+									out.write(message + "\n");
+									out.flush();
+									System.out.println("COMMAND SENT: " + message);
+									break;
+									
+								case "HANDSHAKE_RESPONSE":
+									HostPort connectedHostPort = new HostPort((Document) command.get("hostPort"));
+									if (!connectedPeers.contains(connectedHostPort)) {
+										connectedPeers.add(connectedHostPort);
+									}
+									break;
 
-							case "CONNECTION_REFUSED":
-								// The serverPeer reached max number
-								// Read the the returned peer list, use BFS to connect one of them
-								socket.close();
-								// handleConnectionRefused(command, ser);
-								break;
-								
-							case "FILE_MODIFY_REQUEST":					
-								try {
-									String reply4 = ser.file_modify_response(command);
-									out.write(reply4 + "\n");
+								case "CONNECTION_REFUSED":
+									// The serverPeer reached max number
+									// Read the the returned peer list, use BFS to connect one of them
+									socket.close();
+									// handleConnectionRefused(command, ser);
+									break;
+									
+								case "FILE_MODIFY_REQUEST":					
+									try {
+										String reply4 = ser.file_modify_response(command);
+										out.write(reply4 + "\n");
+										out.flush();
+										System.out.println("COMMAND SENT: " + reply4);
+										String reply5 = ser.byte_request(command);
+										out.write(reply5 + "\n");
+										out.flush();
+										System.out.println("COMMAND SENT: " + reply5);
+									} catch (NoSuchAlgorithmException e2) {
+										// TODO Auto-generated catch block
+										e2.printStackTrace();
+									}
+									break;
+									
+								case "FILE_CREATE_REQUEST":
+									try {
+										String reply1 = ser.file_create_response(command);
+										out.write(reply1 + "\n");
+										out.flush();
+										System.out.println("COMMAND SENT: " + reply1);
+										
+									} catch (NoSuchAlgorithmException e1) {
+										// TODO Auto-generated catch block
+										e1.printStackTrace();
+									}
+									break;
+								case "FILE_CREATE_RESPONSE":
+									break;
+								case "FILE_DELETE_RESPONSE":
+									break;
+								case "FILE_MODIFY_RESPONSE":
+									break;
+								case "DIRECTORY_CREATE_RESPONSE":
+									break;
+								case "DIRECTORY_DELETE_RESPONSE":
+									break;
+									
+								case "FILE_DELETE_REQUEST":
+									String reply = ser.delete_file(command);
+									out.write(reply + "\n");
 									out.flush();
-									System.out.println("COMMAND SENT: " + reply4);
-									String reply5 = ser.byte_request(command);
-									out.write(reply5 + "\n");
-									out.flush();
-									System.out.println("COMMAND SENT: " + reply5);
-								} catch (NoSuchAlgorithmException e2) {
-									// TODO Auto-generated catch block
-									e2.printStackTrace();
-								}
-								break;
-								
-							case "FILE_CREATE_REQUEST":
-								try {
-									String reply1 = ser.file_create_response(command);
+									System.out.println("COMMAND SENT: " + reply);		
+									break;
+									
+								case "DIRECTORY_DELETE_REQUEST":
+									String reply1 = ser.delete_directory(command);
 									out.write(reply1 + "\n");
 									out.flush();
 									System.out.println("COMMAND SENT: " + reply1);
+									break;
 									
-								} catch (NoSuchAlgorithmException e1) {
-									// TODO Auto-generated catch block
-									e1.printStackTrace();
-								}
-								break;
-							case "FILE_CREATE_RESPONSE":
-								break;
-							case "FILE_DELETE_RESPONSE":
-								break;
-							case "FILE_MODIFY_RESPONSE":
-								break;
-							case "DIRECTORY_CREATE_RESPONSE":
-								break;
-							case "DIRECTORY_DELETE_RESPONSE":
-								break;
-								
-							case "FILE_DELETE_REQUEST":
-								String reply = ser.delete_file(command);
-								out.write(reply + "\n");
-								out.flush();
-								System.out.println("COMMAND SENT: " + reply);		
-								break;
-								
-							case "DIRECTORY_DELETE_REQUEST":
-								String reply1 = ser.delete_directory(command);
-								out.write(reply1 + "\n");
-								out.flush();
-								System.out.println("COMMAND SENT: " + reply1);
-								break;
-								
-							case "DIRECTORY_CREATE_REQUEST":
-								String reply2 = ser.create_directory(command);
-								out.write(reply2 + "\n");
-								out.flush();
-								System.out.println("COMMAND SENT: " + reply2);
-								break;
-								
-							case "FILE_BYTES_RESPONSE":
-								try {
-									String reply3 = ser.write_byte(command);
-									if(reply3.equals("complete")) {
-										break;
-									}else {
-									out.write(reply3 + "\n");
+								case "DIRECTORY_CREATE_REQUEST":
+									String reply2 = ser.create_directory(command);
+									out.write(reply2 + "\n");
 									out.flush();
-									System.out.println("COMMAND SENT: " + reply3);
+									System.out.println("COMMAND SENT: " + reply2);
+									break;
+									
+								case "FILE_BYTES_RESPONSE":
+									try {
+										String reply3 = ser.write_byte(command);
+										if(reply3.equals("complete")) {
+											break;
+										}else {
+										out.write(reply3 + "\n");
+										out.flush();
+										System.out.println("COMMAND SENT: " + reply3);
+										}
+									} catch (NoSuchAlgorithmException e) {
+										e.printStackTrace();
+									} catch (ParseException e) {
+										e.printStackTrace();
 									}
-								} catch (NoSuchAlgorithmException e) {
-									e.printStackTrace();
-								} catch (ParseException e) {
-									e.printStackTrace();
+									break;
+									
+								case "FILE_BYTES_REQUEST":
+									
+									String byte_response;
+									try {
+										byte_response = ser.byte_response(command);
+										out.write(byte_response + "\n");
+										out.flush();
+										System.out.println("COMMAND SENT: " + byte_response);
+									} catch (NoSuchAlgorithmException e) {
+										e.printStackTrace();
+									} catch (ParseException e) {
+										e.printStackTrace();
+									}
+									break;
+									
+								case "INVALID_PROTOCOL":
+									break;
+									
+								default:
+									System.out.println("COMMAND RECEIVED: " + received);
+									System.out.println("Running: No matched protocol");
+									break;
 								}
-								break;
-								
-							case "FILE_BYTES_REQUEST":
-								
-								String byte_response;
-								try {
-									byte_response = ser.byte_response(command);
-									out.write(byte_response + "\n");
-									out.flush();
-									System.out.println("COMMAND SENT: " + byte_response);
-								} catch (NoSuchAlgorithmException e) {
-									e.printStackTrace();
-								} catch (ParseException e) {
-									e.printStackTrace();
-								}
-								break;
-								
-							case "INVALID_PROTOCOL":
-								break;
-								
-							default:
-								System.out.println("COMMAND RECEIVED: " + received);
-								System.out.println("Running: No matched protocol");
-								break;
-							}
-						}
-					}
-				    } catch (IOException e) {
-						// TODO Auto-generated catch block
-						// e.printStackTrace();
-						
-						// to check whether the other peer is shutdown or not
-						connectedPeers.remove(hostport);
-						socketList.remove(socket);
-					}
+							
+					} 
+					
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					// e.printStackTrace();
+					connectedPeers.remove(hostport);
+					socketList.remove(socket);
+				}
 			}
 		});
 		thread.start();
