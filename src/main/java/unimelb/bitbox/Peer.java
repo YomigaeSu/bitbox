@@ -14,8 +14,16 @@ import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.security.NoSuchAlgorithmException;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.Security;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.RSAPublicKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.sql.ClientInfoStatus;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -27,14 +35,31 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
+import javax.crypto.KeyGenerator;
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
 import javax.net.ServerSocketFactory;
 //import javax.swing.text.Document;
 
+import org.bouncycastle.asn1.ASN1Object;
+import org.bouncycastle.asn1.ASN1OctetStringParser;
+import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.crypto.tls.TlsAuthentication;
+import org.bouncycastle.jcajce.provider.asymmetric.dsa.DSASigner.noneDSA;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.hibernate.sql.Delete;
+import org.bouncycastle.asn1.ASN1Encodable;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
+import unimelb.bitbox.util.CertificateUtils;
 import unimelb.bitbox.util.Configuration;
 import unimelb.bitbox.util.HostPort;
 import unimelb.bitbox.util.Document;
@@ -57,6 +82,8 @@ public class Peer {
 		int synchornizeTimeInterval = Integer.parseInt(Configuration.getConfigurationValue("syncInterval"));
 		
 		new Thread(() -> waiting(ser)).start();
+		new Thread(()-> waitingClient(ser)).start();
+		
 		ArrayList<FileSystemEvent> pathevents = ser.fileSystemManager.generateSyncEvents();
 		for(FileSystemEvent pathevent : pathevents) {
 			ser.processFileSystemEvent(pathevent);
@@ -67,19 +94,37 @@ public class Peer {
 			String peerIP = hostPort.split(":")[0];
 			int peerPort = Integer.parseInt(hostPort.split(":")[1]);
 			
-			Socket socket = sentConnectionRequest(peerIP, peerPort, ser);
-			if ((socket != null) && (!socket.isClosed())) {
-				HostPort hostport = new HostPort(peerIP, peerPort);
-				new Thread(() -> peerRunning(socket, hostport, ser)).start();
-				socketList.add(socket);
-				connectedPeers.add(hostport);
-				peerSending(socket, ser);
-			}
+			connectPeer(ser, peerIP, peerPort);
+			
 		}
 		ser.eventList.removeAll(ser.eventList);
 		sync(synchornizeTimeInterval, ser);
 	}
 	
+
+	/** Connect to a given Peer, complete the handshake and add it to the socket+peer list
+	 * @param ser
+	 * @param peerIP
+	 * @param peerPort
+	 *  @return true if successfully connected, false if failed.
+	 */
+	public static boolean connectPeer(ServerMain ser, String peerIP, int peerPort) {
+		Socket socket = sentConnectionRequest(peerIP, peerPort, ser);
+		if ((socket != null) && (!socket.isClosed())) {
+			HostPort hostport = new HostPort(peerIP, peerPort);
+			new Thread(() -> peerRunning(socket, hostport, ser)).start();
+			if(!socketList.contains(socket)&&!connectedPeers.contains(hostport)) {
+				socketList.add(socket);
+				connectedPeers.add(hostport);
+				peerSending(socket, ser);
+			}
+			return true;
+		}
+		return false;
+	}
+
+		
+			
 
 	//  ================================ sync ==================================================
 	public static void sync(int sleepTime, ServerMain ser) {
@@ -464,4 +509,265 @@ public class Peer {
 		}
 		return hostPorts;
 	}
+	
+	/** A helper function for constructing current connected peers field
+	 * @param peers The list of HostPort of all the peers that is connected to the current one
+	 * @return a List in Document format ready to append to JSON message 
+	 */
+	public static ArrayList<Document> getConnectedPeers(ArrayList<HostPort> peers){
+		ArrayList<Document> peerList = new ArrayList<>();
+		for (HostPort peer : peers) {
+			peerList.add(peer.toDoc());
+		}
+		return peerList;
+	}
+	
+	// New thread for client/peer communication
+		public static void waitingClient(ServerMain ser) {
+			int clientPort = Integer.parseInt(Configuration.getConfigurationValue("clientPort"));
+			Thread thread = new Thread(new Runnable() {
+
+				@Override
+				public void run() {
+					ServerSocketFactory factory = ServerSocketFactory.getDefault();
+					//				SSLServerSocketFactory factory = (SSLServerSocketFactory) SSLServerSocketFactory.getDefault();
+					try (ServerSocket serverSocket = factory.createServerSocket(clientPort)) {
+						//				try (SSLServerSocket sslServerSocket = (SSLServerSocket) factory.createServerSocket(clientPort)) {
+						System.out.println("Server waiting for a client on "+clientPort);
+						while(true) {
+							Socket socket = serverSocket.accept();
+							BufferedWriter out= new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+							BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+							String received = in.readLine();
+							System.out.println(received);
+
+							Document command = Document.parse(received);
+							String response;
+							if (command.getString("command").equals("AUTH_REQUEST")) {
+								// check the list in Configuration
+								String pubKeyString = getPubKey(command.getString("identity"));
+								//							System.out.print(pubKey);
+
+								if(pubKeyString==null) {
+									Document newCommand = new Document();
+									newCommand.append("command", "AUTH_RESPONSE");
+									newCommand.append("status", false);
+									newCommand.append("message", "public key not found");
+
+									response=newCommand.toJson();
+								}else {
+									// ============= Generating an AES secrete key =============
+									KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+									keyGenerator.init(128);
+									SecretKey secretKey = keyGenerator.generateKey();
+
+									try {
+
+										// ============= Convert OpenSSH public key to Java RSAPublicKey Object =============
+										//									System.out.println(pubKeyString);
+										RSAPublicKey publicKey =  (RSAPublicKey) CertificateUtils.parseSSHPublicKey(pubKeyString);
+										System.out.println(publicKey);
+
+										// ============= Encrypting with client's public key =============
+										Cipher cipher = Cipher.getInstance("RSA");
+										cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+
+										String encodedKey = Base64.getEncoder().encodeToString(secretKey.getEncoded());
+										String encrypted = cipher.doFinal(encodedKey.getBytes()).toString();
+										//									System.out.println(encrypted);
+										Document newCommand = new Document();
+										newCommand.append("command", "AUTH_RESPONSE");
+										newCommand.append("AES128", encrypted);
+										newCommand.append("status", true);
+										newCommand.append("message", "public key found");
+
+										response=newCommand.toJson();
+
+										// ============= Sending the encrypted SecretKey to client =============
+										out.write(response+"\n");
+										out.flush();
+
+									} catch (Exception e) {
+										e.printStackTrace();
+									}
+								}
+
+							} else {
+								// The message is ///encrypted, decrypt the payload and read the content////
+							}
+
+							// ============= Receiving Client's command reply =============
+							received = in.readLine();
+							System.out.println("Message received: "+received);
+
+							command = Document.parse(received);
+							Document newCommand = null;
+							response = null;
+
+							switch (command.getString("command")) {
+							case "LIST_PEERS_REQUEST":
+								// Generate LIST_PEERS_RESPONSE
+								newCommand=new Document();
+								newCommand.append("command", "LIST_PEERS_RESPONSE");
+								newCommand.append("peers", getConnectedPeers(connectedPeers));
+								response=newCommand.toJson();
+								break;
+								
+							case "CONNECT_PEER_REQUEST":
+								// Get the peer's address
+								String peerIP = command.getString("host");
+								int peerPort =(int) command.getLong("port");
+								// Build socket and send Handshake_Requset to the given peer
+								boolean status = connectPeer(ser, peerIP, peerPort);
+								// Construct reply message
+								newCommand=new Document();
+								newCommand.append("command", "CONNECT_PEER_RESPONSE");
+								newCommand.append("host", peerIP);
+								newCommand.append("port", peerPort);
+								newCommand.append("status", status);
+								if(status==true) {
+									newCommand.append("message", "connected to peer");
+								}else {
+									newCommand.append("message","connection failed");
+								}
+								response=newCommand.toJson();
+
+								break;
+							case "DISCONNECT_PEER_REQUEST":
+								// Get the HostPort from the command
+								peerIP = command.getString("host");
+								peerPort = (int)command.getLong("port");
+								boolean status1 = disconnectPeer(peerIP, peerPort);
+								newCommand = new Document();
+								newCommand.append("command", "DISCONNECT_PEER_RESPONSE");
+								newCommand.append("host", peerIP);
+								newCommand.append("port", peerPort);
+								newCommand.append("status", status1);
+								if(status1) {
+									newCommand.append("message", "disconnected from peer");
+								}else {
+									newCommand.append("message", "connection not active");
+								}
+								response = newCommand.toJson();
+								break;
+
+
+							default:
+								break;
+							}
+
+							// =============Sending back the response =============
+							out.write(response+"\n");
+							out.flush();
+							System.out.println("Message sent: "+response);
+
+
+						}
+
+
+					} catch (Exception e) {
+						// TODO: handle exception
+					}
+
+				}
+
+				
+				
+				private String getPubKey(String id) {
+					String[] keys= Configuration.getConfigurationValue("authorized_keys").split(",");
+					//		System.out.println(keys);
+					for (String key : keys) {
+						//			split(" ")[0]:ssh-rsa	[1]:key	[2]:identity(aaron@krusty)
+						if(key.split(" ")[2].equals(id)) {
+							return key;
+						}
+					}
+					return null;
+
+
+				}
+
+			});
+			thread.start();
+		}
+		
+		/**
+		 * @param peerIP
+		 * @param peerPort
+		 */
+		private static HostPort findPeer(String peerIP, int peerPort) {
+			Iterator<HostPort> it  = connectedPeers.iterator();
+			while(it.hasNext()) {
+				HostPort peer = it.next();
+//				System.out.println(peer);
+//				System.out.println((peer.host.equals(peerIP)));
+//				System.out.println((peer.port==peerPort));
+				if (peer.host.equals(peerIP)&&peer.port==peerPort) {	
+					return peer;
+				}
+				
+			}
+			// Peer not found
+			return null;
+		}
+
+
+
+		/** Find a socket in the list connected to the given address and port
+		 * @param peerIP
+		 * @param peerPort
+		 * @return The socket
+		 */
+		private static Socket getSocketByHostPort(String peerIP, int peerPort) {
+			Iterator<Socket> it = socketList.iterator();
+			while(it.hasNext()) {
+				Socket soc = it.next(); 
+				System.out.println(soc.getInetAddress().getCanonicalHostName()+soc.getPort());
+				System.out.println("soc.getInetAddress().getCanonicalHostName().equals(peerIP)"+soc.getInetAddress().getCanonicalHostName().equals(peerIP));
+				System.out.println("soc.getPort()==peerPort"+(soc.getPort()==peerPort));
+				if(soc.getInetAddress().getCanonicalHostName().equals(peerIP)&&soc.getPort()==peerPort) {
+					return soc;
+				}
+			}
+			// Socket not found
+			return null;
+		}
+		
+		/** Check if the peer is in the list
+		 * IF yes 	-> find the socket, close it.
+		 * 			-> delete it From both the lists
+		 * @param peerIP
+		 * @param peerPort
+		 * @return
+		 * @throws IOException
+		 */
+		private static boolean disconnectPeer(String peerIP, int peerPort) throws IOException {
+			
+			// Check if the peer is in the list
+			HostPort hostPort = findPeer(peerIP, peerPort);
+			System.out.println(findPeer(peerIP, peerPort));
+			
+			// IF yes 	-> find the socket, close it.
+			//			-> delete it From both the lists
+			if(hostPort!=null) {
+				Socket soc = getSocketByHostPort(peerIP, peerPort);
+				try {
+					soc.shutdownOutput();
+					soc.shutdownInput();
+					soc.close();
+				}catch (Exception e) {
+					e.printStackTrace();
+					return false;
+				}finally {
+					socketList.remove(soc);
+					connectedPeers.remove(hostPort);	
+				}
+				return true;
+			}
+			// IF no	-> return  false
+			return false;
+			
+			
+		}
 }
