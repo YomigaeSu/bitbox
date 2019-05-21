@@ -2,74 +2,39 @@ package unimelb.bitbox;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.Console;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketAddress;
-import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.security.NoSuchAlgorithmException;
 import java.security.InvalidKeyException;
-import java.security.KeyFactory;
-import java.security.PublicKey;
-import java.security.Security;
+import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.RSAPublicKeySpec;
-import java.security.spec.X509EncodedKeySpec;
-import java.sql.ClientInfoStatus;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Queue;
-import java.util.Scanner;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-import javax.crypto.KeyGenerator;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.KeyGenerator;
+import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.net.ServerSocketFactory;
 //import javax.swing.text.Document;
 
-import org.bouncycastle.asn1.ASN1Object;
-import org.bouncycastle.asn1.ASN1OctetStringParser;
-import org.bouncycastle.asn1.ASN1Primitive;
-import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
-import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
-
-import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
-import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
-import org.bouncycastle.crypto.tls.TlsAuthentication;
-import org.bouncycastle.jcajce.provider.asymmetric.dsa.DSASigner.noneDSA;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.hibernate.boot.internal.DefaultCustomEntityDirtinessStrategy;
-import org.hibernate.sql.Delete;
-import org.bouncycastle.asn1.ASN1Encodable;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
 import unimelb.bitbox.util.CertificateUtils;
 import unimelb.bitbox.util.Configuration;
-import unimelb.bitbox.util.HostPort;
 import unimelb.bitbox.util.Document;
 import unimelb.bitbox.util.FileSystemManager.FileSystemEvent;
+import unimelb.bitbox.util.HostPort;
 
 public class Peer {
 	private static Logger log = Logger.getLogger(Peer.class.getName());
@@ -576,15 +541,11 @@ public class Peer {
 //										System.out.println(publicKey);
 
 										// ============= Encrypting with client's public key =============
-										Cipher cipher = Cipher.getInstance("RSA");
-										cipher.init(Cipher.ENCRYPT_MODE, publicKey);
-
-										String encodedKey = Base64.getEncoder().encodeToString(secretKey.getEncoded());
-										String encrypted = cipher.doFinal(encodedKey.getBytes()).toString();
-										//System.out.println(encrypted);
+										String encrypted = rsaEncrypt(secretKey, publicKey);
+										
 										Document newCommand = new Document();
 										newCommand.append("command", "AUTH_RESPONSE");
-										newCommand.append("AES128", encodedKey);
+										newCommand.append("AES128", encrypted);
 										newCommand.append("status", true);
 										newCommand.append("message", "public key found");
 
@@ -634,6 +595,19 @@ public class Peer {
 				}
 
 
+				private String findPubKey(String id) {
+					String[] keys= Configuration.getConfigurationValue("authorized_keys").split(",");
+					//		System.out.println(keys);
+					for (String key : keys) {
+						//			split(" ")[0]:ssh-rsa	[1]:key	[2]:identity(aaron@krusty)
+						if(key.split(" ")[2].equals(id)) {
+							return key;
+						}
+					}
+					return null;
+				}
+
+
 				/**
 				 * @return
 				 * @throws NoSuchAlgorithmException
@@ -646,18 +620,28 @@ public class Peer {
 					return secretKey;
 				}
 
-				private String findPubKey(String id) {
-					String[] keys= Configuration.getConfigurationValue("authorized_keys").split(",");
-					//		System.out.println(keys);
-					for (String key : keys) {
-						//			split(" ")[0]:ssh-rsa	[1]:key	[2]:identity(aaron@krusty)
-						if(key.split(" ")[2].equals(id)) {
-							return key;
-						}
-					}
-					return null;
-				}
+				/**
+				 * @param secretKey
+				 * @param publicKey
+				 * @return
+				 * @throws NoSuchAlgorithmException
+				 * @throws NoSuchPaddingException
+				 * @throws InvalidKeyException
+				 * @throws IllegalBlockSizeException
+				 * @throws BadPaddingException
+				 */
+				private String rsaEncrypt(SecretKey secretKey, RSAPublicKey publicKey) throws NoSuchAlgorithmException,
+						NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+					Cipher cipher = Cipher.getInstance("RSA");
+					cipher.init(Cipher.ENCRYPT_MODE, publicKey);
 				
+					byte[] encodedKey = secretKey.getEncoded();
+					String encrypted = Base64.getEncoder().encodeToString(cipher.doFinal(encodedKey));
+//					System.out.println(encrypted);
+					return encrypted;
+				}
+
+
 				private String decryptMsg(String encrypted, SecretKey secretKey) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
 					try {
 						Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");

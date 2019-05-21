@@ -17,9 +17,14 @@ import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-//import org.bouncycastle.util.encoders.Base64;
 
 
+
+/** A helper class that can convert PKCS#1 format SSH-RSA key into PKCS#8 RSAPublicKey
+ * Adapted from: https://stackoverflow.com/a/54600720/10231605
+ * @author Taras https://stackoverflow.com/users/769282/taras
+ *
+ */
 public class CertificateUtils {
     private static final int VALUE_LENGTH = 4;
     private static final byte[] INITIAL_PREFIX = new byte[]{0x00, 0x00, 0x00, 0x07, 0x73, 0x73, 0x68, 0x2d, 0x72, 0x73, 0x61};
@@ -75,13 +80,3 @@ public class CertificateUtils {
     }
 }
 
-
-//    public static void main(String[] args) throws Exception
-//    {
-//        // some weird 617 bit key, which is way too small and not a multiple of 8
-////        byte[] pkcs1PublicKeyEncoding = Base64.getDecoder().decode("MFUCTgF/uLsPBS13Gy7C3dPpiDF6SYCLUyyl6CFqPtZT1h5bwKR9EDFLQjG/kMiwkRMcmEeaLKe5qdj9W/FfFitwRAm/8F53pQw2UETKQI2b2wIDAQAB");
-////        byte[] pkcs1PublicKeyEncoding = Base64.getDecoder().decode("2EAAAADAQABAAABAQC/ewAP7S3eDEYfz9BblnPY3dFKcfKx773CSBukrqrtRv9NvtNKKrVQHajrTLwBs0z6xBu+UanNNQn6T+buRnOcZJmljIVj99DJt5iiJfSBGBBqkpKMN4pKWyqX+F+DIhFzaDLggHgVmYDU4OoYwlpMsS2llBZqORPjopXLO866J3qNyNedU7mOs0gE45v4BY9UW2W4d0GoV1OfAki/MQqgQKtnXQSllX+fPjNKu/m211C4HJvwVSWoMhB9gjBFp285fACKzkE9+2t+W8rK/UJpiY1CDwsYp4g/743q0D+L6+mHLQGp97bCdrQbb2JRZcvkJNbf+oFaxXxb05SO66CH");
-////        RSAPublicKey generatePublic = decodePKCS1PublicKey(pkcs1PublicKeyEncoding);
-//    	System.out.println(CertificateUtils.parseSSHPublicKey("ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC/ewAP7S3eDEYfz9BblnPY3dFKcfKx773CSBukrqrtRv9NvtNKKrVQHajrTLwBs0z6xBu+UanNNQn6T+buRnOcZJmljIVj99DJt5iiJfSBGBBqkpKMN4pKWyqX+F+DIhFzaDLggHgVmYDU4OoYwlpMsS2llBZqORPjopXLO866J3qNyNedU7mOs0gE45v4BY9UW2W4d0GoV1OfAki/MQqgQKtnXQSllX+fPjNKu/m211C4HJvwVSWoMhB9gjBFp285fACKzkE9+2t+W8rK/UJpiY1CDwsYp4g/743q0D+L6+mHLQGp97bCdrQbb2JRZcvkJNbf+oFaxXxb05SO66CH yilumac@YilusdeMBP-10.gateway"));
-//    }
-//}

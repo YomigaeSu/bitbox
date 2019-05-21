@@ -10,11 +10,13 @@ import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.Socket;
 import java.security.InvalidKeyException;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
 import java.security.Security;
+import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.RSAPrivateCrtKeySpec;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.logging.Logger;
@@ -25,6 +27,7 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.PEMKeyPair;
@@ -39,7 +42,7 @@ import unimelb.bitbox.util.Document;
 import unimelb.bitbox.util.HostPort;
 public class Client {
 	private static Logger log = Logger.getLogger(Configuration.class.getName());
-	private static final String MY_ID= "yilumac@YilusdeMBP-208.gateway";
+	private static final String MY_ID= "yilu@unimelb";
 	//	private static final String MY_ID= "aaron@krusty";
 	private static final String PRIVATEKEY_FILE = "bitboxclient_rsa";
 	
@@ -126,13 +129,6 @@ public class Client {
 	}
 
 
-
-
-	
-	
-
-
-
 	private static String sendAuthReq() {
 		Document command = new Document();
 		command.append("command", "AUTH_REQUEST");
@@ -185,66 +181,52 @@ public class Client {
 
 	}
 
-	private static PrivateKey readPrivKey() throws FileNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
-		Security.addProvider(new BouncyCastleProvider());	
-		try {
-	
-			BufferedReader br = new BufferedReader(new FileReader(PRIVATEKEY_FILE));	
-			PEMParser pp = new PEMParser(br);
-			PEMKeyPair pemKeyPair = (PEMKeyPair) pp.readObject();
-			KeyPair kp = new JcaPEMKeyConverter().getKeyPair(pemKeyPair);		
-			return kp.getPrivate();
-	
-			//			File privateKeyFile = new File(PRIVATEKEY_FILE); // private key file in PEM format
-			//			PEMParser pemParser = new PEMParser(new FileReader(privateKeyFile));
-			//			PEMKeyPair pemKeyPair =(PEMKeyPair) pemParser.readObject();
-			//			// === Code for private key with password ===
-			//			// PEMDecryptorProvider decProv = new JcePEMDecryptorProviderBuilder().build(password);
-			//			JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
-			//			KeyPair kp = converter.getKeyPair(pemKeyPair);
-			//			PrivateKeyInfo pki =pemKeyPair.getPrivateKeyInfo();
-			//			System.out.println(kp.getPublic());;
-			//            return converter.getPrivateKey(pki);
-	
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		//	     
-		return null;
-	
-	}
-
-
-
-
-
-
-
-
-
 	private static void getSecretKey(Document authRes) {
 		
 		String encrypted=authRes.getString("AES128");
-		// Getting the key with RSA
-//		try {
-//			PrivateKey privateKey = readPrivKey();
-//			System.out.println(privateKey.getEncoded());
-//
-//			Cipher rsa = Cipher.getInstance("RSA");
-//			rsa.init(Cipher.DECRYPT_MODE, privateKey);
-//			byte[] utf8 = rsa.doFinal(encrypted.getBytes());
-//			System.out.println(utf8);
-
-//		} catch (NoSuchPaddingException | InvalidKeyException | IllegalBlockSizeException | BadPaddingException | FileNotFoundException | InvalidKeySpecException | NoSuchAlgorithmException e) {
-//			e.printStackTrace();
-//		}
-
-		// Getting the Secret key without using RSA
-		byte[] encodedKey=authRes.getString("AES128").getBytes();
-		byte[] decodedKey = Base64.getDecoder().decode(encodedKey);
-		secretKey = (SecretKey)new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+		// ============= RSA Decryption=============
+		try {
+			RSAPrivateKey privateKey = readPrivKey();
+			
+			Cipher rsa = Cipher.getInstance("RSA");
+			rsa.init(Cipher.DECRYPT_MODE, privateKey);
+			byte[] decodedKey = rsa.doFinal(Base64.getDecoder().decode(encrypted));
+			secretKey = (SecretKey)new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+		} catch (NoSuchPaddingException | InvalidKeyException | IllegalBlockSizeException | BadPaddingException | FileNotFoundException | InvalidKeySpecException | NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		}
+//		// Getting the Secret key without using RSA
+//		byte[] encodedKey=authRes.getString("AES128").getBytes();
+//		byte[] decodedKey = Base64.getDecoder().decode(encodedKey);
+//		secretKey = (SecretKey)new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
 
 	}
+
+	private static RSAPrivateKey readPrivKey() throws FileNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
+			Security.addProvider(new BouncyCastleProvider());	
+			try {
+		
+	//			BufferedReader br = new BufferedReader(new FileReader(PRIVATEKEY_FILE));	
+				PEMParser pemParser = new PEMParser(new FileReader(PRIVATEKEY_FILE));
+				JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
+				PEMKeyPair pemKeyPair = (PEMKeyPair) pemParser.readObject();
+				KeyPair kp = converter.getKeyPair(pemKeyPair);	
+				
+				KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+				RSAPrivateCrtKeySpec keySpec = keyFactory.getKeySpec(kp.getPrivate(), RSAPrivateCrtKeySpec.class);
+				RSAPrivateKey privateKey = (RSAPrivateKey) keyFactory.generatePrivate(keySpec);
+//				System.out.println(privateKey);
+				return privateKey;
+		
+		
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			//	     
+			return null;
+		
+		}
+
 
 	private static String encryptMsg(String message, SecretKey secretKey) {
 			try {
