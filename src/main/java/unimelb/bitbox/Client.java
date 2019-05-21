@@ -9,7 +9,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
@@ -54,79 +53,65 @@ public class Client {
 
 			parser.parseArgument(args);
 			HostPort server = argsBean.getServer();
+			String CmdMsg = generateCmd(argsBean);
+			if(CmdMsg==null) {
+				// command incorrect, ends program
+				return;
+			}
 
 			Socket socket;
 			try {
 				socket = new Socket(server.host, server.port);
 				BufferedReader in= new BufferedReader(new InputStreamReader(socket.getInputStream()));
 				BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-				// Send Authentication Request
+				
+				// ============= Sending Authentication Request  ============= 
 				String message = sendAuthReq();
-
 				out.write(message + "\n");
 				out.flush();
+				log.info("sent "+message);
 
 				// ============= Receiving Auth response ============= 
 				String received = in.readLine();
-				System.out.println(received);
-
-
-				// ============= Getting secrete key from the response =============
+				log.info("received "+received);
 				Document authRes = Document.parse(received);
-				getSecretKey(authRes);
+				if (!authRes.getString("command").equals("AUTH_RESPONSE")) {
+					log.warning(received);
+					System.out.println("Invalid command field in response: "+ authRes.getString("command"));
+					return;
+				}
 
-				// If succeeds, start communication
+				// ============= Getting the secrete key from the response =============
+				if(!authRes.getBoolean("status")) {
+					log.warning(received);
+					System.out.println("Public key not found, check your identity: "+MY_ID);
+					return;
+				}
+				getSecretKey(authRes);
+				
+				// If successfully read key into secretKey, starts communication
 				
 				// ============= Sending command request to the peer =============
-				message =generateCmd(argsBean);
-//				// TODO: message need to be encrypted
-//				SecretKey secretKey = null;
-				String encrypted = encryptMsg(message,secretKey);
+				String encrypted = encryptMsg(CmdMsg,secretKey);
 				
 				Document newCommand = new Document();
 				newCommand.append("payload", encrypted);
 				message=newCommand.toJson();
 
-				//				out.write(encrypted + "\n");
 				out.write(message + "\n");
 				out.flush();
-				System.out.println("MESSAGE SENT: "+message);
+				log.info("sent "+message);
 				
 				// ============= Receiving response from the server============= 
 				received = in.readLine();
-				System.out.println(received);
+				log.info("received "+received);
+				encrypted = Document.parse(received).getString("payload");
+				String decrypted = decryptMsg(encrypted, secretKey);
 				
 				// ============= Printing out the output=============
-				Document command = Document.parse(received);
-				String output = "";
-				switch (command.getString("command")) {
-				case "LIST_PEERS_RESPONSE":
-					ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
-					if(peers.size()>0) {
-						for (Document peer : peers) {
-							HostPort hostPort = new HostPort(peer);					
-							output+=hostPort.toString()+", ";
-						}
-						output = output.substring(0,output.length()-2);
-					}else {
-						output ="No connected peers";
-					}
-					break;
-					
-				case "CONNECT_PEER_RESPONSE":
-					output = command.getString("message");
-
-					break;
-					
-				case "DISCONNECT_PEER_RESPONSE":
-					output = command.getString("message");
-					break;
-
-				default:
-					break;
-				}
+				String output = printResult(decrypted);
 				
-				System.out.println("output "+output);
+				System.out.println(output);
 
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -139,36 +124,12 @@ public class Client {
 		}
 
 	}
+
+
+
+
 	
-
-
-
-	private static String encryptMsg(String message, SecretKey secretKey) {
-		try {
-			Cipher cipher;
-			cipher = Cipher.getInstance("AES/ECB/PKCS5PADDING");
-			cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-//			System.out.println(message.getBytes("UTF-8"));
-			byte[] encrypted = cipher.doFinal(message.getBytes("UTF-8"));
-			return Base64.getEncoder().encodeToString(encrypted);
-		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
-		} catch (NoSuchPaddingException e) {
-			e.printStackTrace();
-		} catch (InvalidKeyException e) {
-			e.printStackTrace();
-		} catch (IllegalBlockSizeException e) {
-			e.printStackTrace();
-		} catch (BadPaddingException e) {
-			e.printStackTrace();
-		} catch (UnsupportedEncodingException e) {
-			e.printStackTrace();
-		}
-		
-		
-		return null;
-	}
-
+	
 
 
 
@@ -212,7 +173,7 @@ public class Client {
 			break;
 
 		default:
-			System.out.println("No matched command: " + command);
+			System.out.println("No command matched with: " + command+"\nTry: \tlist_peers\tconnect_peer\tdisconnect_peer");
 			break;
 
 		}
@@ -220,15 +181,49 @@ public class Client {
 		if(message!=null){
 			return message;	
 		}
-		log.warning("The message is empty");
 		return null;
 
 	}
 
-	private static void getSecretKey(Document authRes) {
-		if (!authRes.getString("command").equals("AUTH_RESPONSE")) {
-			log.warning("Response is not AUTH_REPSONSE!");
+	private static PrivateKey readPrivKey() throws FileNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
+		Security.addProvider(new BouncyCastleProvider());	
+		try {
+	
+			BufferedReader br = new BufferedReader(new FileReader(PRIVATEKEY_FILE));	
+			PEMParser pp = new PEMParser(br);
+			PEMKeyPair pemKeyPair = (PEMKeyPair) pp.readObject();
+			KeyPair kp = new JcaPEMKeyConverter().getKeyPair(pemKeyPair);		
+			return kp.getPrivate();
+	
+			//			File privateKeyFile = new File(PRIVATEKEY_FILE); // private key file in PEM format
+			//			PEMParser pemParser = new PEMParser(new FileReader(privateKeyFile));
+			//			PEMKeyPair pemKeyPair =(PEMKeyPair) pemParser.readObject();
+			//			// === Code for private key with password ===
+			//			// PEMDecryptorProvider decProv = new JcePEMDecryptorProviderBuilder().build(password);
+			//			JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
+			//			KeyPair kp = converter.getKeyPair(pemKeyPair);
+			//			PrivateKeyInfo pki =pemKeyPair.getPrivateKeyInfo();
+			//			System.out.println(kp.getPublic());;
+			//            return converter.getPrivateKey(pki);
+	
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
+		//	     
+		return null;
+	
+	}
+
+
+
+
+
+
+
+
+
+	private static void getSecretKey(Document authRes) {
+		
 		String encrypted=authRes.getString("AES128");
 		// Getting the key with RSA
 //		try {
@@ -251,35 +246,87 @@ public class Client {
 
 	}
 
-	private static PrivateKey readPrivKey() throws FileNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
-		Security.addProvider(new BouncyCastleProvider());	
+	private static String encryptMsg(String message, SecretKey secretKey) {
+			try {
+				Cipher cipher;
+				cipher = Cipher.getInstance("AES/ECB/PKCS5PADDING");
+				cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+	//			System.out.println(message.getBytes("UTF-8"));
+				byte[] encrypted = cipher.doFinal(message.getBytes("UTF-8"));
+				return Base64.getEncoder().encodeToString(encrypted);
+			} catch (NoSuchAlgorithmException e) {
+				e.printStackTrace();
+			} catch (NoSuchPaddingException e) {
+				e.printStackTrace();
+			} catch (InvalidKeyException e) {
+				e.printStackTrace();
+			} catch (IllegalBlockSizeException e) {
+				e.printStackTrace();
+			} catch (BadPaddingException e) {
+				e.printStackTrace();
+			} catch (UnsupportedEncodingException e) {
+				e.printStackTrace();
+			}
+			
+			
+			return null;
+		}
+
+
+
+
+
+
+
+
+
+	private static String decryptMsg(String encrypted, SecretKey secretKey) {
 		try {
-
-			BufferedReader br = new BufferedReader(new FileReader(PRIVATEKEY_FILE));	
-			PEMParser pp = new PEMParser(br);
-			PEMKeyPair pemKeyPair = (PEMKeyPair) pp.readObject();
-			KeyPair kp = new JcaPEMKeyConverter().getKeyPair(pemKeyPair);		
-			return kp.getPrivate();
-
-			//			File privateKeyFile = new File(PRIVATEKEY_FILE); // private key file in PEM format
-			//			PEMParser pemParser = new PEMParser(new FileReader(privateKeyFile));
-			//			PEMKeyPair pemKeyPair =(PEMKeyPair) pemParser.readObject();
-			//			// === Code for private key with password ===
-			//			// PEMDecryptorProvider decProv = new JcePEMDecryptorProviderBuilder().build(password);
-			//			JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
-			//			KeyPair kp = converter.getKeyPair(pemKeyPair);
-			//			PrivateKeyInfo pki =pemKeyPair.getPrivateKeyInfo();
-			//			System.out.println(kp.getPublic());;
-			//            return converter.getPrivateKey(pki);
-
-		} catch (IOException e) {
+			Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+			cipher.init(Cipher.DECRYPT_MODE, secretKey);
+			byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(encrypted));
+			return new String(decrypted, "UTF-8");
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		//	     
 		return null;
+		
+	}
+	
+	/** Converts the received message into a single line output
+	 * @param received
+	 * @return
+	 */
+	private static String printResult(String received) {
+		Document command = Document.parse(received);
+		String output = "";
+		switch (command.getString("command")) {
+		case "LIST_PEERS_RESPONSE":
+			ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
+			if(peers.size()>0) {
+				for (Document peer : peers) {
+					HostPort hostPort = new HostPort(peer);					
+					output+=hostPort.toString()+", ";
+				}
+				output = output.substring(0,output.length()-2);
+			}else {
+				output ="No connected peers";
+			}
+			break;
+			
+		case "CONNECT_PEER_RESPONSE":
+			output = command.getString("message");
 
+			break;
+			
+		case "DISCONNECT_PEER_RESPONSE":
+			output = command.getString("message");
+			break;
 
-
+		default:
+			break;
+		}
+		return output;
 	}
 
 }

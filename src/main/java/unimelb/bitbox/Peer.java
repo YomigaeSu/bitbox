@@ -8,6 +8,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
@@ -607,10 +608,13 @@ public class Peer {
 									String decrypted = decryptMsg(encrypted, secretKey);
 									
 									command = Document.parse(decrypted);
-									Document newCommand = null;
 									response = executeClientCmd(ser, command);
 
 									// =============Sending back the response =============
+									encrypted = encryptMsg(response, secretKey);
+									Document doc = new Document();
+									doc.append("payload", encrypted);
+									response=doc.toJson();
 									out.write(response+"\n");
 									out.flush();
 									System.out.println("Message sent: "+response);
@@ -665,6 +669,20 @@ public class Peer {
 					}
 					return null;
 					
+				}
+				
+				private String encryptMsg(String message, SecretKey secretKey) {
+					try {
+						Cipher cipher;
+						cipher = Cipher.getInstance("AES/ECB/PKCS5PADDING");
+						cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+//						System.out.println(message.getBytes("UTF-8"));
+						byte[] encrypted = cipher.doFinal(message.getBytes("UTF-8"));
+						return Base64.getEncoder().encodeToString(encrypted);
+					} catch (Exception e) {
+						e.printStackTrace();
+					} 
+					return null;
 				}
 				
 				/**
