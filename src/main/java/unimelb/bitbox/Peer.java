@@ -14,6 +14,7 @@ import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.security.NoSuchAlgorithmException;
+import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.Security;
@@ -36,7 +37,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import javax.crypto.KeyGenerator;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.SecretKey;
 import javax.net.ServerSocketFactory;
 //import javax.swing.text.Document;
@@ -52,6 +56,7 @@ import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.crypto.tls.TlsAuthentication;
 import org.bouncycastle.jcajce.provider.asymmetric.dsa.DSASigner.noneDSA;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.hibernate.boot.internal.DefaultCustomEntityDirtinessStrategy;
 import org.hibernate.sql.Delete;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.json.simple.JSONArray;
@@ -131,7 +136,7 @@ public class Peer {
 		int count = 0;
 		while (true) {
 			//System.out.println(socketList);
-			//System.out.println(connectedPeers);
+//			System.out.println(connectedPeers);
 			try {
 				TimeUnit.SECONDS.sleep(1);
 			} catch (InterruptedException e) {
@@ -149,6 +154,7 @@ public class Peer {
 					peerSending(socket, ser);
 				}
 				ser.eventList.removeAll(ser.eventList);
+				System.out.println("All events sent to: "+connectedPeers);
 				count = 0;
 			} else {
 				Iterator<Socket> iter = socketList.iterator();
@@ -180,7 +186,7 @@ public class Peer {
 			String received = in.readLine();
 			Document command = Document.parse(received);
 			
-			System.out.println(command.get("command").toString());
+//			System.out.println(command.get("command").toString());
 			switch (command.get("command").toString()) {
 				case "HANDSHAKE_RESPONSE":
 					break;
@@ -207,7 +213,7 @@ public class Peer {
 		@SuppressWarnings("unchecked")
 		ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
 		for (Document peer : peers) {
-			System.out.println(peer.toJson());
+//			System.out.println(peer.toJson());
 			String h = peer.getString("host");
 			String p = peer.get("port").toString();
 			hostPortsQueue.offer(new HostPort(h, Integer.parseInt(p)));
@@ -291,7 +297,7 @@ public class Peer {
 						String received = in.readLine();
 						Document command = Document.parse(received);
 						String message;
-						System.out.println(command.get("command").toString());
+//						System.out.println(command.get("command").toString());
 						switch (command.get("command").toString()) {
 								
 								case "HANDSHAKE_REQUEST":
@@ -317,7 +323,7 @@ public class Peer {
 										String reply4 = ser.file_modify_response(command);
 										out.write(reply4 + "\n");
 										out.flush();
-										System.out.println("COMMAND SENT: " + reply4);
+//										System.out.println("COMMAND SENT: " + reply4);
 										String reply5 = ser.byte_request(command);
 										out.write(reply5 + "\n");
 										out.flush();
@@ -332,7 +338,7 @@ public class Peer {
 										String reply1 = ser.file_create_response(command);
 										out.write(reply1 + "\n");
 										out.flush();
-										System.out.println("COMMAND SENT: " + reply1);
+//										System.out.println("COMMAND SENT: " + reply1);
 										
 									} catch (NoSuchAlgorithmException e1) {
 										e1.printStackTrace();
@@ -353,33 +359,33 @@ public class Peer {
 									String reply = ser.delete_file(command);
 									out.write(reply + "\n");
 									out.flush();
-									System.out.println("COMMAND SENT: " + reply);		
+//									System.out.println("COMMAND SENT: " + reply);		
 									break;
 									
 								case "DIRECTORY_DELETE_REQUEST":
 									String reply1 = ser.delete_directory(command);
 									out.write(reply1 + "\n");
 									out.flush();
-									System.out.println("COMMAND SENT: " + reply1);
+//									System.out.println("COMMAND SENT: " + reply1);
 									break;
 									
 								case "DIRECTORY_CREATE_REQUEST":
 									String reply2 = ser.create_directory(command);
 									out.write(reply2 + "\n");
 									out.flush();
-									System.out.println("COMMAND SENT: " + reply2);
+//									System.out.println("COMMAND SENT: " + reply2);
 									break;
 									
 								case "FILE_BYTES_RESPONSE":
 									try {
 										String reply3 = ser.write_byte(command);
-										System.out.println(reply3);
+//										System.out.println(reply3);
 										if(reply3.equals("complete")) {
 											break;
 										}else {
 										out.write(reply3+"\n");
 										out.flush();
-										System.out.println("COMMAND SENT: " + reply3);
+//										System.out.println("COMMAND SENT: " + reply3);
 										}
 									} catch (NoSuchAlgorithmException e) {
 										e.printStackTrace();
@@ -392,11 +398,11 @@ public class Peer {
 									
 									String byte_response;
 									try {
-										System.out.println(command.toJson());
+//										System.out.println(command.toJson());
 										byte_response = ser.byte_response(command);
 										out.write(byte_response+"\n");
 										out.flush();
-										System.out.println("COMMAND SENT: " + byte_response);
+//										System.out.println("COMMAND SENT: " + byte_response);
 									} catch (NoSuchAlgorithmException e) {
 										e.printStackTrace();
 									} catch (ParseException e) {
@@ -530,12 +536,12 @@ public class Peer {
 				@Override
 				public void run() {
 					ServerSocketFactory factory = ServerSocketFactory.getDefault();
-					//				SSLServerSocketFactory factory = (SSLServerSocketFactory) SSLServerSocketFactory.getDefault();
 					try (ServerSocket serverSocket = factory.createServerSocket(clientPort)) {
-						//				try (SSLServerSocket sslServerSocket = (SSLServerSocket) factory.createServerSocket(clientPort)) {
 						System.out.println("Server waiting for a client on "+clientPort);
 						while(true) {
 							Socket socket = serverSocket.accept();
+							// Prepare a key for this session
+							SecretKey secretKey= null;
 							BufferedWriter out= new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 							BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
@@ -546,28 +552,27 @@ public class Peer {
 							String response;
 							if (command.getString("command").equals("AUTH_REQUEST")) {
 								// check the list in Configuration
-								String pubKeyString = getPubKey(command.getString("identity"));
-								//							System.out.print(pubKey);
-
+								String pubKeyString = findPubKey(command.getString("identity"));
+								
 								if(pubKeyString==null) {
+									// ============= No key founded, refuse communication=============
 									Document newCommand = new Document();
 									newCommand.append("command", "AUTH_RESPONSE");
 									newCommand.append("status", false);
 									newCommand.append("message", "public key not found");
 
 									response=newCommand.toJson();
+									
+									out.write(response+"\n");
+									out.flush();
 								}else {
 									// ============= Generating an AES secrete key =============
-									KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-									keyGenerator.init(128);
-									SecretKey secretKey = keyGenerator.generateKey();
+									secretKey = generateAESKey();
 
 									try {
-
 										// ============= Convert OpenSSH public key to Java RSAPublicKey Object =============
-										//									System.out.println(pubKeyString);
 										RSAPublicKey publicKey =  (RSAPublicKey) CertificateUtils.parseSSHPublicKey(pubKeyString);
-										System.out.println(publicKey);
+//										System.out.println(publicKey);
 
 										// ============= Encrypting with client's public key =============
 										Cipher cipher = Cipher.getInstance("RSA");
@@ -575,10 +580,10 @@ public class Peer {
 
 										String encodedKey = Base64.getEncoder().encodeToString(secretKey.getEncoded());
 										String encrypted = cipher.doFinal(encodedKey.getBytes()).toString();
-										//									System.out.println(encrypted);
+										//System.out.println(encrypted);
 										Document newCommand = new Document();
 										newCommand.append("command", "AUTH_RESPONSE");
-										newCommand.append("AES128", encrypted);
+										newCommand.append("AES128", encodedKey);
 										newCommand.append("status", true);
 										newCommand.append("message", "public key found");
 
@@ -591,90 +596,53 @@ public class Peer {
 									} catch (Exception e) {
 										e.printStackTrace();
 									}
+									
+									// ============= Receiving Client's command reply =============
+									received = in.readLine();
+									System.out.println("Message received: "+received);
+									
+									// ============= Decrypt the message with AES key =============
+									command =Document.parse(received);
+									String encrypted = Document.parse(received).getString("payload");
+									String decrypted = decryptMsg(encrypted, secretKey);
+									
+									command = Document.parse(decrypted);
+									Document newCommand = null;
+									response = executeClientCmd(ser, command);
+
+									// =============Sending back the response =============
+									out.write(response+"\n");
+									out.flush();
+									System.out.println("Message sent: "+response);
 								}
 
-							} else {
-								// The message is ///encrypted, decrypt the payload and read the content////
 							}
-
-							// ============= Receiving Client's command reply =============
-							received = in.readLine();
-							System.out.println("Message received: "+received);
-
-							command = Document.parse(received);
-							Document newCommand = null;
-							response = null;
-
-							switch (command.getString("command")) {
-							case "LIST_PEERS_REQUEST":
-								// Generate LIST_PEERS_RESPONSE
-								newCommand=new Document();
-								newCommand.append("command", "LIST_PEERS_RESPONSE");
-								newCommand.append("peers", getConnectedPeers(connectedPeers));
-								response=newCommand.toJson();
-								break;
-								
-							case "CONNECT_PEER_REQUEST":
-								// Get the peer's address
-								String peerIP = command.getString("host");
-								int peerPort =(int) command.getLong("port");
-								// Build socket and send Handshake_Requset to the given peer
-								boolean status = connectPeer(ser, peerIP, peerPort);
-								// Construct reply message
-								newCommand=new Document();
-								newCommand.append("command", "CONNECT_PEER_RESPONSE");
-								newCommand.append("host", peerIP);
-								newCommand.append("port", peerPort);
-								newCommand.append("status", status);
-								if(status==true) {
-									newCommand.append("message", "connected to peer");
-								}else {
-									newCommand.append("message","connection failed");
-								}
-								response=newCommand.toJson();
-
-								break;
-							case "DISCONNECT_PEER_REQUEST":
-								// Get the HostPort from the command
-								peerIP = command.getString("host");
-								peerPort = (int)command.getLong("port");
-								boolean status1 = disconnectPeer(peerIP, peerPort);
-								newCommand = new Document();
-								newCommand.append("command", "DISCONNECT_PEER_RESPONSE");
-								newCommand.append("host", peerIP);
-								newCommand.append("port", peerPort);
-								newCommand.append("status", status1);
-								if(status1) {
-									newCommand.append("message", "disconnected from peer");
-								}else {
-									newCommand.append("message", "connection not active");
-								}
-								response = newCommand.toJson();
-								break;
-
-
-							default:
-								break;
-							}
-
-							// =============Sending back the response =============
-							out.write(response+"\n");
-							out.flush();
-							System.out.println("Message sent: "+response);
-
-
+							
+							// ============= End communication =============
+							socket.close();			
 						}
 
 
 					} catch (Exception e) {
-						// TODO: handle exception
+						e.printStackTrace();
 					}
 
 				}
 
-				
-				
-				private String getPubKey(String id) {
+
+				/**
+				 * @return
+				 * @throws NoSuchAlgorithmException
+				 */
+				private SecretKey generateAESKey() throws NoSuchAlgorithmException {
+					SecretKey secretKey;
+					KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+					keyGenerator.init(128);
+					secretKey = keyGenerator.generateKey();
+					return secretKey;
+				}
+
+				private String findPubKey(String id) {
 					String[] keys= Configuration.getConfigurationValue("authorized_keys").split(",");
 					//		System.out.println(keys);
 					for (String key : keys) {
@@ -684,9 +652,85 @@ public class Peer {
 						}
 					}
 					return null;
-
-
 				}
+				
+				private String decryptMsg(String encrypted, SecretKey secretKey) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+					try {
+						Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+						cipher.init(Cipher.DECRYPT_MODE, secretKey);
+						byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(encrypted));
+						return new String(decrypted, "UTF-8");
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+					return null;
+					
+				}
+				
+				/**
+				 * @param ser
+				 * @param command
+				 * @return
+				 * @throws IOException
+				 */
+				private String executeClientCmd(ServerMain ser, Document command) throws IOException {
+					String response= null;
+					Document newCommand;
+
+					switch (command.getString("command")) {
+					case "LIST_PEERS_REQUEST":
+						// Generate LIST_PEERS_RESPONSE
+						newCommand=new Document();
+						newCommand.append("command", "LIST_PEERS_RESPONSE");
+						newCommand.append("peers", getConnectedPeers(connectedPeers));
+						response=newCommand.toJson();
+						break;
+						
+					case "CONNECT_PEER_REQUEST":
+						// Get the peer's address
+						String peerIP = command.getString("host");
+						int peerPort =(int) command.getLong("port");
+						// Build socket and send Handshake_Requset to the given peer
+						boolean status = connectPeer(ser, peerIP, peerPort);
+						// Construct reply message
+						newCommand=new Document();
+						newCommand.append("command", "CONNECT_PEER_RESPONSE");
+						newCommand.append("host", peerIP);
+						newCommand.append("port", peerPort);
+						newCommand.append("status", status);
+						if(status==true) {
+							newCommand.append("message", "connected to peer");
+						}else {
+							newCommand.append("message","connection failed");
+						}
+						response=newCommand.toJson();
+
+						break;
+					case "DISCONNECT_PEER_REQUEST":
+						// Get the HostPort from the command
+						peerIP = command.getString("host");
+						peerPort = (int)command.getLong("port");
+						boolean status1 = disconnectPeer(peerIP, peerPort);
+						newCommand = new Document();
+						newCommand.append("command", "DISCONNECT_PEER_RESPONSE");
+						newCommand.append("host", peerIP);
+						newCommand.append("port", peerPort);
+						newCommand.append("status", status1);
+						if(status1) {
+							newCommand.append("message", "disconnected from peer");
+						}else {
+							newCommand.append("message", "connection not active");
+						}
+						response = newCommand.toJson();
+						break;
+
+
+					default:
+						break;
+					}
+					return response;
+				}
+
 
 			});
 			thread.start();

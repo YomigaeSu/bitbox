@@ -7,13 +7,17 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.Security;
 import java.security.spec.InvalidKeySpecException;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.logging.Logger;
 
 import javax.crypto.BadPaddingException;
@@ -21,6 +25,7 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.PEMKeyPair;
@@ -38,6 +43,8 @@ public class Client {
 	private static final String MY_ID= "yilumac@YilusdeMBP-208.gateway";
 	//	private static final String MY_ID= "aaron@krusty";
 	private static final String PRIVATEKEY_FILE = "bitboxclient_rsa";
+	
+	private static SecretKey secretKey;
 
 	public static void main(String[] args) {
 		// Parse the args and store them into argsBean
@@ -66,7 +73,7 @@ public class Client {
 
 				// ============= Getting secrete key from the response =============
 				Document authRes = Document.parse(received);
-//				getSecretKey(authRes);
+				getSecretKey(authRes);
 
 				// If succeeds, start communication
 				
@@ -74,7 +81,11 @@ public class Client {
 				message =generateCmd(argsBean);
 //				// TODO: message need to be encrypted
 //				SecretKey secretKey = null;
-//				String encrypted = encryptMsg(message,secretKey);
+				String encrypted = encryptMsg(message,secretKey);
+				
+				Document newCommand = new Document();
+				newCommand.append("payload", encrypted);
+				message=newCommand.toJson();
 
 				//				out.write(encrypted + "\n");
 				out.write(message + "\n");
@@ -85,6 +96,37 @@ public class Client {
 				received = in.readLine();
 				System.out.println(received);
 				
+				// ============= Printing out the output=============
+				Document command = Document.parse(received);
+				String output = "";
+				switch (command.getString("command")) {
+				case "LIST_PEERS_RESPONSE":
+					ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
+					if(peers.size()>0) {
+						for (Document peer : peers) {
+							HostPort hostPort = new HostPort(peer);					
+							output+=hostPort.toString()+", ";
+						}
+						output = output.substring(0,output.length()-2);
+					}else {
+						output ="No connected peers";
+					}
+					break;
+					
+				case "CONNECT_PEER_RESPONSE":
+					output = command.getString("message");
+
+					break;
+					
+				case "DISCONNECT_PEER_RESPONSE":
+					output = command.getString("message");
+					break;
+
+				default:
+					break;
+				}
+				
+				System.out.println("output "+output);
 
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -102,6 +144,28 @@ public class Client {
 
 
 	private static String encryptMsg(String message, SecretKey secretKey) {
+		try {
+			Cipher cipher;
+			cipher = Cipher.getInstance("AES/ECB/PKCS5PADDING");
+			cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+//			System.out.println(message.getBytes("UTF-8"));
+			byte[] encrypted = cipher.doFinal(message.getBytes("UTF-8"));
+			return Base64.getEncoder().encodeToString(encrypted);
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		} catch (NoSuchPaddingException e) {
+			e.printStackTrace();
+		} catch (InvalidKeyException e) {
+			e.printStackTrace();
+		} catch (IllegalBlockSizeException e) {
+			e.printStackTrace();
+		} catch (BadPaddingException e) {
+			e.printStackTrace();
+		} catch (UnsupportedEncodingException e) {
+			e.printStackTrace();
+		}
+		
+		
 		return null;
 	}
 
@@ -123,7 +187,6 @@ public class Client {
 		String command =argsBean.getCommand();
 		HostPort peer;
 
-		// >>Theses commands need to be encrypted
 		String message = null;
 		Document newCommand=new Document();
 		switch (command) {
@@ -141,9 +204,6 @@ public class Client {
 			break;
 
 		case "disconnect_peer":
-			//			"command" : "DISCONNECT_PEER_REQUEST",
-			//			"host" : "bigdata.cis.unimelb.edu.au",
-			//			"port" : 8500
 			peer=argsBean.getPeer();
 			newCommand.append("command", "DISCONNECT_PEER_REQUEST");
 			newCommand.append("host", peer.host);
@@ -170,25 +230,24 @@ public class Client {
 			log.warning("Response is not AUTH_REPSONSE!");
 		}
 		String encrypted=authRes.getString("AES128");
+		// Getting the key with RSA
+//		try {
+//			PrivateKey privateKey = readPrivKey();
+//			System.out.println(privateKey.getEncoded());
+//
+//			Cipher rsa = Cipher.getInstance("RSA");
+//			rsa.init(Cipher.DECRYPT_MODE, privateKey);
+//			byte[] utf8 = rsa.doFinal(encrypted.getBytes());
+//			System.out.println(utf8);
 
-		try {
-			PrivateKey privateKey = readPrivKey();
-			System.out.println(privateKey.getEncoded());
+//		} catch (NoSuchPaddingException | InvalidKeyException | IllegalBlockSizeException | BadPaddingException | FileNotFoundException | InvalidKeySpecException | NoSuchAlgorithmException e) {
+//			e.printStackTrace();
+//		}
 
-			Cipher rsa = Cipher.getInstance("RSA");
-			rsa.init(Cipher.DECRYPT_MODE, privateKey);
-			byte[] utf8 = rsa.doFinal(encrypted.getBytes());
-			System.out.println(utf8);
-
-		} catch (NoSuchPaddingException | InvalidKeyException | IllegalBlockSizeException | BadPaddingException | FileNotFoundException | InvalidKeySpecException | NoSuchAlgorithmException e) {
-			e.printStackTrace();
-		}
-
-
-		//			String encodedKey=authRes.getString("AES128");
-		//			byte[] decodedKey = Base64.getDecoder().decode(encodedKey);
-		////			System.out.println(Base64.getDecoder().decode(encodedKey));
-		//			SecretKey secretKey = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+		// Getting the Secret key without using RSA
+		byte[] encodedKey=authRes.getString("AES128").getBytes();
+		byte[] decodedKey = Base64.getDecoder().decode(encodedKey);
+		secretKey = (SecretKey)new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
 
 	}
 
