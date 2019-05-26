@@ -6,7 +6,6 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.security.NoSuchAlgorithmException;
-import java.security.Timestamp;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -125,6 +124,14 @@ public class Peer {
 								packet = new DatagramPacket(buf, buf.length, address, port);
 								socket.send(packet);
 								System.out.println("file created");
+								
+								String reply1 = ser.file_bytes_request(command);
+								if (!reply1.equals("complete")) {
+									buf = reply1.getBytes();
+									packet = new DatagramPacket(buf, buf.length, address, port);
+									socket.send(packet);
+									System.out.println("send file_bytes_request");
+								}
 								break;
 								
 							case "FILE_DELETE_REQUEST":
@@ -234,7 +241,7 @@ public class Peer {
 	public static void sync(DatagramSocket socket, int sleepTime, ServerMain ser) {
 		int count = sleepTime;
 		while (true) {
-			System.out.println(connectedPeers);
+			//System.out.println(connectedPeers);
 			try {
 				TimeUnit.SECONDS.sleep(1);
 			} catch (InterruptedException e) {

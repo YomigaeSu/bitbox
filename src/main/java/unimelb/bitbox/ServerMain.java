@@ -146,27 +146,11 @@ public class ServerMain implements FileSystemObserver {
 		long blockSize =  Long.parseLong(Configuration.getConfigurationValue("blockSize"));
 		if (fileSystemManager.fileNameExists(pathName) == false) {
 		if (fileSystemManager.createFileLoader(pathName, md5, length, lastModified) == true) {
-			if (fileSystemManager.checkWriteComplete(pathName) == true ) {
 				response.append("command", "FILE_CREATE_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", pathName);
 				response.append("message", "file loader ready");
-				response.append("status", true);
-			} else {
-				if(blockSize > length) {
-					response.append("command", "FILE_BYTES_REQUEST");			
-					response.append("fileDescriptor", des);
-					response.append("pathName", pathName);
-					response.append("position", 0);
-					response.append("length", length);
-				} else {
-					response.append("command", "FILE_BYTES_REQUEST");			
-					response.append("fileDescriptor", des);
-					response.append("pathName", pathName);
-					response.append("position", 0);
-					response.append("length", blockSize);
-				}
-			}
+				response.append("status", true);			
 		} else {
 			response.append("command", "FILE_CREATE_RESPONSE");
 			response.append("fileDescriptor", des);
@@ -176,27 +160,11 @@ public class ServerMain implements FileSystemObserver {
 		}
 		} else {
 			if (fileSystemManager.modifyFileLoader(pathName, md5, length, lastModified) == true) {
-				if (fileSystemManager.checkWriteComplete(pathName) == false ) {
-				if(blockSize > length) {
-					response.append("command", "FILE_BYTES_REQUEST");			
-					response.append("fileDescriptor", des);
-					response.append("pathName", pathName);
-					response.append("position", 0);
-					response.append("length", length);
-				} else {
-					response.append("command", "FILE_BYTES_REQUEST");			
-					response.append("fileDescriptor", des);
-					response.append("pathName", pathName);
-					response.append("position", 0);
-					response.append("length", blockSize);
-				}
-				} else {
 					response.append("command", "FILE_CREATE_RESPONSE");
 					response.append("fileDescriptor", des);
 					response.append("pathName", pathName);
 					response.append("message", "the file exist");
-					response.append("status", false);
-				}
+					response.append("status", false);				
 			} else {
 				response.append("command", "FILE_CREATE_RESPONSE");
 				response.append("fileDescriptor", des);
@@ -210,6 +178,44 @@ public class ServerMain implements FileSystemObserver {
 		
 	}
 	
+	public String file_bytes_request(Document message)  {
+		String result = "";
+		Document response = new Document();		
+		Document des =(Document) message.get("fileDescriptor");
+		String pathName = (String)message.get("pathName");
+		long length = (long)des.get("fileSize");
+		long lastModified = (long)des.get("lastModified");
+		String md5 = (String)des.get("md5");
+		long blockSize =  Long.parseLong(Configuration.getConfigurationValue("blockSize"));
+		try {
+		if (fileSystemManager.checkWriteComplete(pathName) == true ) {
+				result = "complete";
+			} else {
+				if(blockSize > length) {
+					response.append("command", "FILE_BYTES_REQUEST");			
+					response.append("fileDescriptor", des);
+					response.append("pathName", pathName);
+					response.append("position", 0);
+					response.append("length", length);
+					result = response.toJson();
+					
+				} else {
+					response.append("command", "FILE_BYTES_REQUEST");			
+					response.append("fileDescriptor", des);
+					response.append("pathName", pathName);
+					response.append("position", 0);
+					response.append("length", blockSize);
+					result = response.toJson();
+				}
+			}
+		 } catch(Exception e) {
+			 result = "complete";
+		 }
+
+		return result;
+		
+	}
+	
 	public String file_modify_response(Document message) throws NoSuchAlgorithmException, IOException {
 		Document response = new Document();		
 		Document des =(Document) message.get("fileDescriptor");
@@ -218,13 +224,13 @@ public class ServerMain implements FileSystemObserver {
 		long lastModified = (long)des.get("lastModified");
 		String md5 = (String)des.get("md5");
 		if (fileSystemManager.modifyFileLoader(pathName, md5, length, lastModified) == true) {
-				response.append("command", "FILE_CREATE_RESPONSE");
+				response.append("command", "FILE_MODIFY_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", pathName);
 				response.append("message", "file loader ready");
 				response.append("status", true);
 		} else {
-			response.append("command", "FILE_CREATE_RESPONSE");
+			response.append("command", "FILE_MODIFY_RESPONSE");
 			response.append("fileDescriptor", des);
 			response.append("pathName", pathName);
 			response.append("message", "there was a problem modifying the file");
@@ -378,12 +384,14 @@ public class ServerMain implements FileSystemObserver {
 				response.append("pathName", pathName);
 				response.append("message", "there was a problem deleting the file" );
 				response.append("status", false);
+				System.out.println("1");
 			} else {
 				response.append("command", "FILE_DELETE_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", pathName);
 				response.append("message", "pathname does not exist" );
 				response.append("status", false);
+				System.out.println("2");
 			}
 		}
 		return response.toJson();

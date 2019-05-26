@@ -248,15 +248,23 @@ public class TCP {
 									break;
 									
 								case "FILE_CREATE_REQUEST":
+									String reply1;
 									try {
-										String reply1 = ser.file_create_response(command);
+										reply1 = ser.file_create_response(command);
 										out.write(reply1 + "\n");
 										out.flush();
 										System.out.println("COMMAND SENT: " + reply1);
-										
 									} catch (NoSuchAlgorithmException e1) {
+										// TODO Auto-generated catch block
 										e1.printStackTrace();
-									}
+									}									
+												
+												String reply4 = ser.file_bytes_request(command);
+												if (!reply4.equals("complete")) {
+													out.write(reply4 + "\n");
+													out.flush();
+													System.out.println("COMMAND SENT: " + reply4);
+												}
 									break;
 								case "FILE_CREATE_RESPONSE":
 									break;
@@ -277,10 +285,10 @@ public class TCP {
 									break;
 									
 								case "DIRECTORY_DELETE_REQUEST":
-									String reply1 = ser.delete_directory(command);
-									out.write(reply1 + "\n");
+									String reply5 = ser.delete_directory(command);
+									out.write(reply5 + "\n");
 									out.flush();
-									System.out.println("COMMAND SENT: " + reply1);
+									System.out.println("COMMAND SENT: " + reply5);
 									break;
 									
 								case "DIRECTORY_CREATE_REQUEST":
