@@ -85,20 +85,38 @@ public class Peer {
 					byte[] buf = new byte[8192];
 					while (true) {
 						DatagramPacket packet = new DatagramPacket(buf, buf.length);
-						// will this step be blocked?
 						socket.receive(packet);
 						
 						InetAddress address = packet.getAddress();
 			            int port = packet.getPort();
 			            HostPort hostport = new HostPort(address.toString().substring(1), port);
+			            
+			            // check maximum number
 			            if (!connectedPeers.contains(hostport)) {
-							connectedPeers.add(hostport);
+			            	if (connectedPeers.size() < 10) {
+			            		connectedPeers.add(hostport);
+			            	} else {
+			            		Document newCommand = new Document();
+			            		newCommand.append("command", "CONNECTION_REFUSED");
+			        			newCommand.append("message", "connection limit reached");
+			        			ArrayList<HostPort> peers = (ArrayList<HostPort>) connectedPeers;
+			        			ArrayList<Document> docs = new ArrayList<>();
+			        			for (HostPort peer : peers) {
+			        				docs.add(peer.toDoc());
+			        			}
+			        			newCommand.append("peers", docs);
+			        			String reply = newCommand.toJson();
+			        			buf = reply.getBytes();
+								packet = new DatagramPacket(buf, buf.length, address, port);
+								socket.send(packet);
+			            	}
 						}
 			            
 						String received = new String(packet.getData(), 0, packet.getLength());
 						Document command = Document.parse(received);
 						System.out.println(command.get("command").toString());
 						String reply;
+						String des;
 						switch (command.get("command").toString()) {
 						    // still need 3 cases 1 modify and 2 byte transfer
 							case "FILE_CREATE_REQUEST":
@@ -107,14 +125,6 @@ public class Peer {
 								packet = new DatagramPacket(buf, buf.length, address, port);
 								socket.send(packet);
 								System.out.println("file created");
-								
-								Document doc = Document.parse(reply);
-								System.out.println(reply);
-								String key = ((Document) doc.get("fileDescriptor")).toJson();
-								System.out.println("=======================");
-								System.out.println(key);
-								responseList.put(key, false);
-								new Thread(() -> waitResponse (key, hostport)).start();
 								break;
 								
 							case "FILE_DELETE_REQUEST":
@@ -143,20 +153,34 @@ public class Peer {
 								
 							case "FILE_CREATE_RESPONSE":
 								// check responseList
-								String des = command.get("fileDescriptor").toString();
-								System.out.println(des);
+								des = ((Document) command.get("fileDescriptor")).toJson();
 								if (responseList.containsKey(des)) {
-									System.out.println("here");
 									responseList.put(des, true);
 								}
 								break;
 							case "FILE_DELETE_RESPONSE":
+								des = ((Document) command.get("fileDescriptor")).toJson();
+								if (responseList.containsKey(des)) {
+									responseList.put(des, true);
+								}
 								break;
 							case "FILE_MODIFY_RESPONSE":
+								des = ((Document) command.get("fileDescriptor")).toJson();
+								if (responseList.containsKey(des)) {
+									responseList.put(des, true);
+								}
 								break;
 							case "DIRECTORY_CREATE_RESPONSE":
+								des = ((Document) command.get("fileDescriptor")).toJson();
+								if (responseList.containsKey(des)) {
+									responseList.put(des, true);
+								}
 								break;
 							case "DIRECTORY_DELETE_RESPONSE":
+								des = ((Document) command.get("fileDescriptor")).toJson();
+								if (responseList.containsKey(des)) {
+									responseList.put(des, true);
+								}
 								break;
 								
 							case "INVALID_PROTOCOL":
@@ -164,7 +188,7 @@ public class Peer {
 							}
 					} 
 				} catch (IOException e) {
-					
+					System.out.println("error");
 				} catch (NoSuchAlgorithmException e1) {
 					e1.printStackTrace();
 				}
@@ -185,13 +209,10 @@ public class Peer {
 						TimeUnit.SECONDS.sleep(5);
 						// check value of key
 						if ((boolean) responseList.get(key)) {
-							System.out.println("nnnnnnnnnnnnnnnnnn");
 							break;
 						}
-						System.out.println(responseList.toString());
 						count++;
 					}
-					
 					if (count == tryTimes) {
 						// disconnect
 						responseList.remove(key);
@@ -240,7 +261,12 @@ public class Peer {
 		}
 	}
 	
+	public static void checkMaxConnection() {
+		
+	}
+	
 	// send all event in ser eventList to all the remembered peers
+	@SuppressWarnings("unchecked")
 	public static void peerSending(DatagramSocket socket, ServerMain ser) {
 		try {
 			Iterator<String> iter = ser.eventList.iterator();
@@ -252,6 +278,12 @@ public class Peer {
 					HostPort hostPort = peer_iter.next();
 					DatagramPacket packet = new DatagramPacket(buf, buf.length, InetAddress.getByName(hostPort.host), hostPort.port);
 					socket.send(packet);
+					
+					Document doc = Document.parse(s);
+					String key = ((Document) doc.get("fileDescriptor")).toJson();
+					responseList.put(key, false);
+					new Thread(() -> waitResponse (key, hostPort)).start();
+					break;
 				}
 			}
 		
@@ -264,3 +296,7 @@ public class Peer {
 	}
 	
 }
+
+
+
+
