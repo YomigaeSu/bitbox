@@ -136,6 +136,7 @@ public class Peer {
 								
 							case "FILE_DELETE_REQUEST":
 								reply = ser.delete_file(command);
+								System.out.println(reply);	
 								buf = reply.getBytes();
 								packet = new DatagramPacket(buf, buf.length, address, port);
 								socket.send(packet);
@@ -178,13 +179,13 @@ public class Peer {
 								}
 								break;
 							case "DIRECTORY_CREATE_RESPONSE":
-								des = ((Document) command.get("fileDescriptor")).toJson();
+								des = (String) command.get("pathName");
 								if (responseList.containsKey(des)) {
 									responseList.put(des, true);
 								}
 								break;
 							case "DIRECTORY_DELETE_RESPONSE":
-								des = ((Document) command.get("fileDescriptor")).toJson();
+								des = (String) command.get("pathName");
 								if (responseList.containsKey(des)) {
 									responseList.put(des, true);
 								}
@@ -285,12 +286,22 @@ public class Peer {
 					HostPort hostPort = peer_iter.next();
 					DatagramPacket packet = new DatagramPacket(buf, buf.length, InetAddress.getByName(hostPort.host), hostPort.port);
 					socket.send(packet);
-					
-					Document doc = Document.parse(s);
-					String key = ((Document) doc.get("fileDescriptor")).toJson();
-					responseList.put(key, false);
-					new Thread(() -> waitResponse (key, hostPort)).start();
-					break;
+					// different cases for file and directory
+					try {
+						// if it is a file
+						Document doc = Document.parse(s);
+						String key = ((Document) doc.get("fileDescriptor")).toJson();
+						responseList.put(key, false);
+						new Thread(() -> waitResponse (key, hostPort)).start();
+						break;
+					} catch (NullPointerException ed) {
+						// if it is a directory
+						Document doc = Document.parse(s);
+						String key = (String) doc.get("pathName");
+						responseList.put(key, false);
+						new Thread(() -> waitResponse (key, hostPort)).start();
+						break;
+					}
 				}
 			}
 		
