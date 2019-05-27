@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import org.json.simple.JSONObject;
+import org.json.simple.parser.ParseException;
 
 import unimelb.bitbox.util.Configuration;
 import unimelb.bitbox.util.Document;
@@ -81,8 +82,8 @@ public class Peer {
 			@Override
 			public void run() {
 				try {
-					byte[] buf = new byte[8192];
 					while (true) {
+						byte[] buf = new byte[8192];
 						DatagramPacket packet = new DatagramPacket(buf, buf.length);
 						socket.receive(packet);
 						
@@ -113,7 +114,6 @@ public class Peer {
 			            
 						String received = new String(packet.getData(), 0, packet.getLength());
 						Document command = Document.parse(received);
-						System.out.println(command.get("command").toString());
 						String reply;
 						String des;
 						switch (command.get("command").toString()) {
@@ -157,6 +157,51 @@ public class Peer {
 								packet = new DatagramPacket(buf, buf.length, address, port);
 								socket.send(packet);
 								System.out.println("directory created");
+								break;
+								
+							case "FILE_MODIFY_REQUEST":
+								try {
+									String reply4 = ser.file_modify_response(command);
+									buf = reply4.getBytes();
+									packet = new DatagramPacket(buf, buf.length, address, port);
+									socket.send(packet);
+									String reply5 = ser.byte_request(command);
+									buf = reply5.getBytes();
+									packet = new DatagramPacket(buf, buf.length, address, port);
+									socket.send(packet);
+								} catch (NoSuchAlgorithmException e2) {
+									e2.printStackTrace();
+								}
+								break;
+								
+							case "FILE_BYTES_REQUEST":
+								try {
+									reply = ser.byte_response(command);
+									buf = reply.getBytes();
+									packet = new DatagramPacket(buf, buf.length, address, port);
+									socket.send(packet);
+								} catch (ParseException e) {
+									// TODO Auto-generated catch block
+									e.printStackTrace();
+								}								
+								break;
+								
+							case "FILE_BYTES_RESPONSE":
+								try {
+									String reply3 = ser.write_byte(command);
+									System.out.println(reply3);
+									if(reply3.equals("complete")) {
+										break;
+									}else {
+									buf = reply3.getBytes();
+									packet = new DatagramPacket(buf, buf.length, address, port);
+									socket.send(packet);
+									}
+								} catch (NoSuchAlgorithmException e) {
+									e.printStackTrace();
+								} catch (ParseException e) {
+									e.printStackTrace();
+								}
 								break;
 								
 							case "FILE_CREATE_RESPONSE":
@@ -280,6 +325,7 @@ public class Peer {
 			Iterator<String> iter = ser.eventList.iterator();
 			while (iter.hasNext()) {
 				String s = iter.next();
+				System.out.println(s);
 				byte[] buf = s.getBytes();
 				Iterator<HostPort> peer_iter = connectedPeers.iterator();
 				while (peer_iter.hasNext()) {
