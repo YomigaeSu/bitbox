@@ -56,7 +56,6 @@ public class ServerMain implements FileSystemObserver {
 			message.put("pathName", fileSystemEvent.pathName);
 
 			String protocol = message.toJSONString();
-			log.info(protocol);
 			eventList.add(message.toString());
 			
 
@@ -80,7 +79,6 @@ public class ServerMain implements FileSystemObserver {
 			 message1.put("pathName", fileSystemEvent.pathName);
 			      
 			 String protocol1 = message1.toJSONString();
-		     log.info(protocol1);
 		     eventList.add(message1.toString());
 					
 			 break; 
@@ -103,7 +101,6 @@ public class ServerMain implements FileSystemObserver {
 			message2.put("pathName", fileSystemEvent.pathName);
 			
 			String protocol2 = message2.toJSONString();
-			log.info(protocol2);
 			eventList.add(message2.toString());
 			
 			break;
@@ -116,7 +113,6 @@ public class ServerMain implements FileSystemObserver {
 			message3.put("pathName", fileSystemEvent.pathName);
 			
 			String protocol3 = message3.toJSONString();
-			log.info(protocol3);
 			eventList.add(message3.toString());
 			
 			break;
@@ -129,7 +125,6 @@ public class ServerMain implements FileSystemObserver {
 			message4.put("command", "DIRECTORY_DELETE_REQUEST");
 			
 			String protocol4 = message4.toJSONString();
-			log.info(protocol4);
 			eventList.add(message4.toString());
 			
 			break;
