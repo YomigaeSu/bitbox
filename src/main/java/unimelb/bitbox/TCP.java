@@ -377,6 +377,7 @@ public class TCP {
 					}
 					ser.eventList.removeAll(ser.eventList);
 					count = 0;
+					System.out.println(connectedPeers);
 				} else {
 				// if not synchronizing, we keep checking update for every 1 second
 					Iterator<Socket> iter = socketList.iterator();
