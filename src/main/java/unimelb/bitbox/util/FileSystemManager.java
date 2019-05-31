@@ -548,7 +548,7 @@ public class FileSystemManager extends Thread {
 		synchronized(this) {
 			String fullPathName=root+FileSystems.getDefault().getSeparator()+pathName;
 			if(loadingFiles.containsKey(fullPathName)) return false;
-			if(watchedFiles.containsKey(fullPathName) && watchedFiles.get(fullPathName).lastModified<=lastModified) {
+			if(watchedFiles.containsKey(fullPathName) && watchedFiles.get(fullPathName).lastModified<lastModified) {
 				loadingFiles.put(fullPathName, new FileLoader(fullPathName,md5,
 													length,
 													lastModified));
