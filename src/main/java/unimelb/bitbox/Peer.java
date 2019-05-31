@@ -155,7 +155,7 @@ public class Peer {
 				peerSending(socket, ser);
 				ser.eventList.removeAll(ser.eventList);
 				count = 0;
-				System.out.println(connectedPeers);
+				System.out.println("ConnectedPeers when sync: "+connectedPeers);
 			} else {
 			// if not synchronizing, we keep checking update for every 1 second
 				peerSending(socket, ser);
@@ -739,9 +739,9 @@ public class Peer {
 			Iterator<Socket> it = socketList.iterator();
 			while(it.hasNext()) {
 				Socket soc = it.next(); 
-				System.out.println(soc.getInetAddress().getCanonicalHostName()+soc.getPort());
-				System.out.println("soc.getInetAddress().getCanonicalHostName().equals(peerIP)"+soc.getInetAddress().getCanonicalHostName().equals(peerIP));
-				System.out.println("soc.getPort()==peerPort"+(soc.getPort()==peerPort));
+//				System.out.println(soc.getInetAddress().getCanonicalHostName()+soc.getPort());
+//				System.out.println("soc.getInetAddress().getCanonicalHostName().equals(peerIP)"+soc.getInetAddress().getCanonicalHostName().equals(peerIP));
+//				System.out.println("soc.getPort()==peerPort"+(soc.getPort()==peerPort));
 				if(soc.getInetAddress().getCanonicalHostName().equals(peerIP)&&soc.getPort()==peerPort) {
 					return soc;
 				}
@@ -759,29 +759,41 @@ public class Peer {
 		 * @throws IOException
 		 */
 		private static boolean disconnectPeer(String peerIP, int peerPort) throws IOException {
+			if(mode.contentEquals("tcp")) {
+				// Check if the peer is in the list
+				HostPort hostPort = findPeer(peerIP, peerPort);
+//				System.out.println(findPeer(peerIP, peerPort));
 
-			// Check if the peer is in the list
-			HostPort hostPort = findPeer(peerIP, peerPort);
-//			System.out.println(findPeer(peerIP, peerPort));
-
-			// IF yes 	-> find the socket, close it.
-			//			-> delete it From both the lists
-			if(hostPort!=null) {
-				Socket soc = getSocketByHostPort(peerIP, peerPort);
-				try {
-					soc.shutdownOutput();
-					soc.shutdownInput();
-					soc.close();
-				}catch (Exception e) {
-					e.printStackTrace();
-					return false;
-				}finally {
-					socketList.remove(soc);
-					connectedPeers.remove(hostPort);	
+				// IF yes 	-> find the socket, close it.
+				//			-> delete it From both the lists
+				if(hostPort!=null) {
+					Socket soc = getSocketByHostPort(peerIP, peerPort);
+					try {
+						soc.shutdownOutput();
+						soc.shutdownInput();
+						soc.close();
+					}catch (Exception e) {
+						e.printStackTrace();
+						return false;
+					}finally {
+						socketList.remove(soc);
+						connectedPeers.remove(hostPort);	
+					}
+					return true;
 				}
-				return true;
 			}
-			// IF no	-> return  false
+			
+			if(mode.contentEquals("udp")) {
+				// Check if the peer is in the list
+				HostPort hostPort = findPeer(peerIP, peerPort);
+				System.out.println("found"+hostPort);
+				if(hostPort!=null) {
+					connectedPeers.remove(hostPort);
+					System.out.println("after remove"+connectedPeers);
+					return true;
+				}
+			}
+			
 			return false;
 
 
