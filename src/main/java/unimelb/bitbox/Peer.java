@@ -612,7 +612,7 @@ public class Peer {
 				 */
 				private String rsaEncrypt(SecretKey secretKey, RSAPublicKey publicKey) throws NoSuchAlgorithmException,
 				NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
-					Cipher cipher = Cipher.getInstance("RSA");
+					Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
 					cipher.init(Cipher.ENCRYPT_MODE, publicKey);
 
 					byte[] encodedKey = secretKey.getEncoded();

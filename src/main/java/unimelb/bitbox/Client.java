@@ -188,7 +188,7 @@ public class Client {
 		try {
 			RSAPrivateKey privateKey = readPrivKey();
 			
-			Cipher rsa = Cipher.getInstance("RSA");
+			Cipher rsa = Cipher.getInstance("RSA/ECB/PKCS1Padding");
 			rsa.init(Cipher.DECRYPT_MODE, privateKey);
 			byte[] decodedKey = rsa.doFinal(Base64.getDecoder().decode(encrypted));
 			secretKey = (SecretKey)new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
