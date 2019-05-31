@@ -82,6 +82,7 @@ public class Peer {
 			
 			// peer receiving
 			new Thread(() -> peerRunning(socket, ser)).start();
+			new Thread(()-> waitingClient(ser)).start();
 			
 			// notice all the peers
 			connectNotify(socket);
@@ -89,6 +90,8 @@ public class Peer {
 			// peer sending and sync
 			sync(socket, synchornizeTimeInterval, ser);
 		}
+		
+		
 	}
 	
 	public static void connectNotify(DatagramSocket socket) throws IOException {
@@ -96,6 +99,19 @@ public class Peer {
 		for (String hp : peerList) {
 			String peerIP = hp.split(":")[0];
 			int peerPort = Integer.parseInt(hp.split(":")[1]);
+			sendConnectionRequest(socket, peerIP, peerPort);
+		}
+	}
+
+	/** For UDP connection: send out a HANDSHAKE_REQUEST packet with the local peer address
+	 * @param socket the socket for sending datagram
+	 * @param peerIP the peer that you are trying to connect
+	 * @param peerPort
+	 * @throws UnknownHostException
+	 * @throws IOException
+	 */
+	public static void sendConnectionRequest(DatagramSocket socket, String peerIP, int peerPort){
+		try {
 			HostPort hostport = new HostPort(peerIP, peerPort);
 			HostPort self_hostport = new HostPort(ip, port);
 			
@@ -111,7 +127,11 @@ public class Peer {
 			// change: for waiting peers port
 			newCommand.append("hostPort", (Document) hostport.toDoc());
 			waitResponse(hostport, newCommand.toJson(), "hostPort", packet);
+		
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
+		
 	}
 	
 	// ===================== keep sending out packets ==============================================
@@ -135,6 +155,7 @@ public class Peer {
 				peerSending(socket, ser);
 				ser.eventList.removeAll(ser.eventList);
 				count = 0;
+				System.out.println(connectedPeers);
 			} else {
 			// if not synchronizing, we keep checking update for every 1 second
 				peerSending(socket, ser);
@@ -797,7 +818,29 @@ public class Peer {
 					return true;
 				}
 			}
-			
+
+			if(mode.contentEquals("udp")) {
+				sendConnectionRequest(socket,peerIP, peerPort);
+				int count = 0;
+				int tryTimes = 3;  // try to re-send at most 3 times
+				try {
+					while (count < tryTimes) {
+						if (findPeer(peerIP, peerPort)!=null) {
+							return true;
+						}
+						TimeUnit.SECONDS.sleep(5);	
+						System.out.println("current peer: "+connectedPeers);
+						count++;
+					}
+					if (count==tryTimes) {
+						System.out.println("Connecting:"+peerIP+":"+peerPort+ " time out");
+						return false;
+					}
+				}catch (Exception e) {
+					e.printStackTrace();
+				}
+				
+			}
 			return false;
 		}
 
