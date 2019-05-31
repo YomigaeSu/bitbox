@@ -557,6 +557,9 @@ public class Peer {
 
 									// ============= Receiving Client's command reply =============
 									received = in.readLine();
+									if(received==null) {
+										continue;
+									}
 									System.out.println("Message received: "+received);
 
 									// ============= Decrypt the message with AES key =============
