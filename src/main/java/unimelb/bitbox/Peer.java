@@ -268,30 +268,40 @@ public class Peer {
 				            int peerPort = packet.getPort();
 				            HostPort peerHostport = new HostPort(peerAddress.toString().substring(1), peerPort);
 				            
-				            // if a new peer come in, check maximum number
-				            if (!connectedPeers.contains(peerHostport)) {
-				            	if (connectedPeers.size() < 10) {
-				            		connectedPeers.add(peerHostport);
-				            	} else {
-				            		Document newCommand = new Document();
-				            		newCommand.append("command", "CONNECTION_REFUSED");
-				        			newCommand.append("message", "connection limit reached");
-				        			ArrayList<HostPort> peers = (ArrayList<HostPort>) connectedPeers;
-				        			ArrayList<Document> docs = new ArrayList<>();
-				        			for (HostPort peer : peers) {
-				        				docs.add(peer.toDoc());
-				        			}
-				        			newCommand.append("peers", docs);
-				        			String reply = newCommand.toJson();
-				        			buf = reply.getBytes();
+				            String received = new String(packet.getData(), 0, packet.getLength());
+							Document command = Document.parse(received);
+				         
+							// if a new peer come in, check maximum number
+							if (command.get("command").toString().equals("HANDSHAKE_REQUEST")) {
+								if (connectedPeers.size() < 10) {
+									connectedPeers.add(peerHostport);
+								} else {
+									Document newCommand = new Document();
+									newCommand.append("command", "CONNECTION_REFUSED");
+									newCommand.append("message", "connection limit reached");
+									ArrayList<HostPort> peers = (ArrayList<HostPort>) connectedPeers;
+									ArrayList<Document> docs = new ArrayList<>();
+									for (HostPort peer : peers) {
+										docs.add(peer.toDoc());
+									}
+									newCommand.append("peers", docs);
+									String reply = newCommand.toJson();
+									buf = reply.getBytes();
 									packet = new DatagramPacket(buf, buf.length, peerAddress, peerPort);
 									socket.send(packet);
 									continue;
-				            	}
+								}
 							}
+			                
+			                if (command.get("command").toString().equals("HANDSHAKE_RESPONSE")) {
+			                 connectedPeers.add(peerHostport);
+			                }
+			                
+			                if (!connectedPeers.contains(peerHostport)) {
+			                 continue;
+			       }
 				            
-							String received = new String(packet.getData(), 0, packet.getLength());
-							Document command = Document.parse(received);
+							
 							String reply;
 							String des;
 							switch (command.get("command").toString()) {
