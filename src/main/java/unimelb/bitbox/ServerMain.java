@@ -146,14 +146,12 @@ public class ServerMain implements FileSystemObserver {
 				response.append("pathName", pathName);
 				response.append("message", "file loader ready");
 				response.append("status", true);			
-				System.out.println("1");
 		} else {
 			response.append("command", "FILE_CREATE_RESPONSE");
 			response.append("fileDescriptor", des);
 			response.append("pathName", pathName);
 			response.append("message", "there was a problem creating the file");
 			response.append("status", false); 
-			System.out.println("2");
 		}
 		} else {
 			if (fileSystemManager.modifyFileLoader(pathName, md5, length, lastModified) == true) {
@@ -162,14 +160,12 @@ public class ServerMain implements FileSystemObserver {
 					response.append("pathName", pathName);
 					response.append("message", "file loader ready");
 					response.append("status", true);	
-					System.out.println("3");
 			} else {
 				response.append("command", "FILE_CREATE_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", pathName);
 				response.append("message", "there was a problem creating the file");
 				response.append("status", false);
-				System.out.println("4");
 			}
 			
 		}
@@ -186,6 +182,9 @@ public class ServerMain implements FileSystemObserver {
 		long lastModified = (long)des.get("lastModified");
 		String md5 = (String)des.get("md5");
 		long blockSize =  Long.parseLong(Configuration.getConfigurationValue("blockSize"));
+		if (blockSize>5000) {
+			blockSize = 5000;
+		}
 		try {
 		if (fileSystemManager.checkWriteComplete(pathName) == true ) {
 				result = "complete";
@@ -247,6 +246,9 @@ public class ServerMain implements FileSystemObserver {
 		long length = (long)des.get("fileSize");
 		String md5 = (String)des.get("md5");	
 		long blockSize =  Long.parseLong(Configuration.getConfigurationValue("blockSize"));
+		if (blockSize>5000) {
+			blockSize = 5000;
+		}
 		if ((long)des.get("fileSize")!=0) {
 			if (fileSystemManager.checkShortcut("test.txt") == false) {
 				if(blockSize > length) {
@@ -288,7 +290,6 @@ public class ServerMain implements FileSystemObserver {
 		String encoded = Base64.getEncoder().encodeToString(sendingBuffer.array());
 		response.append("content", encoded);
 		
-		System.out.println(response.toJson());
 		return response.toJson();
 	}
 	
@@ -384,14 +385,12 @@ public class ServerMain implements FileSystemObserver {
 				response.append("pathName", pathName);
 				response.append("message", "there was a problem deleting the file" );
 				response.append("status", false);
-				System.out.println("1");
 			} else {
 				response.append("command", "FILE_DELETE_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", pathName);
 				response.append("message", "pathname does not exist" );
 				response.append("status", false);
-				System.out.println("2");
 			}
 		}
 		return response.toJson();
