@@ -11,6 +11,9 @@ public class CmdLineArgs {
 	@Option(required = false, name = "-p", usage = "Peer address")
 	private String p;
 	
+	@Option(required = false, name = "-i", usage = "Client identity")
+	private String identity = "yilu@unimelb";
+	
 	public String getCommand() {
 		return command;
 	}
@@ -23,6 +26,10 @@ public class CmdLineArgs {
 	public HostPort getPeer() {
 		HostPort peer = new HostPort(p);
 		return peer;
+	}
+	
+	public String getIdentity() {
+		return identity;
 	}
 	
 }
