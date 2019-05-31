@@ -12,6 +12,7 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -627,7 +628,7 @@ public class Peer {
 				 */
 				private String rsaEncrypt(SecretKey secretKey, RSAPublicKey publicKey) throws NoSuchAlgorithmException,
 				NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
-					Cipher cipher = Cipher.getInstance("RSA");
+					Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
 					cipher.init(Cipher.ENCRYPT_MODE, publicKey);
 
 					byte[] encodedKey = secretKey.getEncoded();
@@ -639,10 +640,12 @@ public class Peer {
 
 				private String decryptMsg(String encrypted, SecretKey secretKey) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
 					try {
-						Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+						Cipher cipher = Cipher.getInstance("AES/ECB/NoPadding");
 						cipher.init(Cipher.DECRYPT_MODE, secretKey);
 						byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(encrypted));
-						return new String(decrypted, "UTF-8");
+						String result = new String(decrypted, "UTF-8");
+						result = result.split("\n")[0];
+						return result;
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
@@ -653,10 +656,27 @@ public class Peer {
 				private String encryptMsg(String message, SecretKey secretKey) {
 					try {
 						Cipher cipher;
-						cipher = Cipher.getInstance("AES/ECB/PKCS5PADDING");
+						cipher = Cipher.getInstance("AES/ECB/NoPadding");
 						cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-						//								System.out.println(message.getBytes("UTF-8"));
-						byte[] encrypted = cipher.doFinal(message.getBytes("UTF-8"));
+						// Padding the message with random data, so that each block is exactly 128bit
+						byte bytes[];
+						byte appended[];
+						message=message+"\n";
+						int messagelength = message.getBytes("UTF-8").length;
+						if (messagelength%16!=0) {
+
+							SecureRandom random = new SecureRandom();
+						      bytes = new byte[16-(messagelength%16)];
+						      random.nextBytes(bytes);
+
+						      appended = new byte[messagelength+bytes.length];
+						      System.arraycopy(message.getBytes("UTF-8"), 0, appended, 0, messagelength);
+						      System.arraycopy(bytes, 0, appended, messagelength, bytes.length);
+						} else {
+							appended=message.getBytes("UTF-8");
+						}
+
+						byte[] encrypted = cipher.doFinal(appended);
 						return Base64.getEncoder().encodeToString(encrypted);
 					} catch (Exception e) {
 						e.printStackTrace();
