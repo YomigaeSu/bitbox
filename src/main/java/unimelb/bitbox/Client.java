@@ -13,6 +13,7 @@ import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.security.Security;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
@@ -231,10 +232,28 @@ public class Client {
 	private static String encryptMsg(String message, SecretKey secretKey) {
 			try {
 				Cipher cipher;
-				cipher = Cipher.getInstance("AES/ECB/PKCS5PADDING");
+				cipher = Cipher.getInstance("AES/ECB/NoPadding");
 				cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-	//			System.out.println(message.getBytes("UTF-8"));
-				byte[] encrypted = cipher.doFinal(message.getBytes("UTF-8"));
+				// Padding the message with random data, so that each block is exactly 128bit
+				byte bytes[];
+				byte appended[];
+				message=message+"\n";
+				int messagelength = message.getBytes("UTF-8").length;
+				if (messagelength%16!=0) {
+					
+					SecureRandom random = new SecureRandom();
+				      bytes = new byte[16-(messagelength%16)];
+				      random.nextBytes(bytes);
+				      
+				      appended = new byte[messagelength+bytes.length];
+				      System.arraycopy(message.getBytes("UTF-8"), 0, appended, 0, messagelength);
+				      System.arraycopy(bytes, 0, appended, messagelength, bytes.length);
+				} else {
+					appended=message.getBytes("UTF-8");
+				}
+				
+				
+				byte[] encrypted = cipher.doFinal(appended);
 				return Base64.getEncoder().encodeToString(encrypted);
 			} catch (NoSuchAlgorithmException e) {
 				e.printStackTrace();
@@ -264,10 +283,12 @@ public class Client {
 
 	private static String decryptMsg(String encrypted, SecretKey secretKey) {
 		try {
-			Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+			Cipher cipher = Cipher.getInstance("AES/ECB/NoPadding");
 			cipher.init(Cipher.DECRYPT_MODE, secretKey);
 			byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(encrypted));
-			return new String(decrypted, "UTF-8");
+			String result = new String(decrypted, "UTF-8");
+			result = result.split("\n")[0];
+			return result;
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -285,17 +306,19 @@ public class Client {
 		switch (command.getString("command")) {
 		case "LIST_PEERS_RESPONSE":
 			ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
-			if(peers.size()>0) {
-				for (Document peer : peers) {
-					HostPort hostPort = new HostPort(peer);					
-					output+=hostPort.toString()+", ";
-				}
-				output = output.substring(0,output.length()-2);
+			if(peers.size()>1) {
+				output = "Connected to "+peers.size()+" peers\n";
 			}else {
-				output ="No connected peers";
+				output ="Connected to "+peers.size()+" peer\n";
 			}
+			for (Document peer : peers) {
+				HostPort hostPort = new HostPort(peer);					
+				output+=hostPort.toString()+"\n";
+			}
+			//				output = output.substring(0,output.length()-2);
+
 			break;
-			
+
 		case "CONNECT_PEER_RESPONSE":
 			output = command.getString("message");
 
