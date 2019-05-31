@@ -146,26 +146,30 @@ public class ServerMain implements FileSystemObserver {
 				response.append("pathName", pathName);
 				response.append("message", "file loader ready");
 				response.append("status", true);			
+				System.out.println("1");
 		} else {
 			response.append("command", "FILE_CREATE_RESPONSE");
 			response.append("fileDescriptor", des);
 			response.append("pathName", pathName);
 			response.append("message", "there was a problem creating the file");
 			response.append("status", false); 
+			System.out.println("2");
 		}
 		} else {
 			if (fileSystemManager.modifyFileLoader(pathName, md5, length, lastModified) == true) {
 					response.append("command", "FILE_CREATE_RESPONSE");
 					response.append("fileDescriptor", des);
 					response.append("pathName", pathName);
-					response.append("message", "the file exist");
-					response.append("status", false);				
+					response.append("message", "file loader ready");
+					response.append("status", true);	
+					System.out.println("3");
 			} else {
 				response.append("command", "FILE_CREATE_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", pathName);
 				response.append("message", "there was a problem creating the file");
 				response.append("status", false);
+				System.out.println("4");
 			}
 			
 		}
@@ -284,6 +288,7 @@ public class ServerMain implements FileSystemObserver {
 		String encoded = Base64.getEncoder().encodeToString(sendingBuffer.array());
 		response.append("content", encoded);
 		
+		System.out.println(response.toJson());
 		return response.toJson();
 	}
 	
@@ -330,7 +335,7 @@ public class ServerMain implements FileSystemObserver {
 					response.append("command", "FILE_CREATE_RESPONSE");
 					response.append("fileDescriptor", des);
 					response.append("pathName", (String)message.get("pathName"));
-					response.append("message", "there was a problem creating the file1");
+					response.append("message", "there was a problem creating the file");
 					response.append("status", false);
 					
 					result = response.toJson();
@@ -341,7 +346,7 @@ public class ServerMain implements FileSystemObserver {
 				response.append("command", "FILE_CREATE_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", (String)message.get("pathName"));
-				response.append("message", "there was a problem creating the file2");
+				response.append("message", "there was a problem creating the file");
 				response.append("status", false);
 				
 				result = response.toJson();
@@ -352,7 +357,7 @@ public class ServerMain implements FileSystemObserver {
 				response.append("command", "FILE_CREATE_RESPONSE");
 				response.append("fileDescriptor", des);
 				response.append("pathName", (String)message.get("pathName"));
-				response.append("message", "there was a problem creating the file3");
+				response.append("message", "there was a problem creating the file");
 				response.append("status", false);
 				
 				result = response.toJson();

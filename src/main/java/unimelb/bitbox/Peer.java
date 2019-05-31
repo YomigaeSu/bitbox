@@ -90,8 +90,6 @@ public class Peer {
 			// peer sending and sync
 			sync(socket, synchornizeTimeInterval, ser);
 		}
-		
-		
 	}
 	
 	public static void connectNotify(DatagramSocket socket) throws IOException {
@@ -199,12 +197,12 @@ public class Peer {
 	public static void waitResponse(HostPort hostport, String jsonString, String fieldName, DatagramPacket packet) {
 		Document doc = Document.parse(jsonString);
 		if (fieldName.equals("fileDescriptor")) {
-			String key = ((Document) doc.get(fieldName)).toJson();
+			String key = ((Document) doc.get(fieldName)).toJson() + hostport.toString();
 			responseList.put(key, false);
 			new Thread(() -> wait (key, hostport, packet)).start();
 		}
 		if (fieldName.equals("pathName")) {
-			String key = (String) doc.get(fieldName);
+			String key = (String) doc.get(fieldName) + hostport.toString();
 			responseList.put(key, false);
 			new Thread(() -> wait (key, hostport, packet)).start();
 		}
@@ -215,10 +213,11 @@ public class Peer {
 			@Override
 			public void run() {
 				int count = 0;
-				int tryTimes = 3;  // try to re-send at most 3 times
+				int tryTimes = Integer.parseInt(Configuration.getConfigurationValue("udpRetries"));
 				try {
 					while (count < tryTimes) {
-						TimeUnit.SECONDS.sleep(5);
+						int timeout = Integer.parseInt(Configuration.getConfigurationValue("udpTimeout"));
+						TimeUnit.MILLISECONDS.sleep(timeout);
 						// check value of key and re-try
 						if (responseList.isEmpty()) {
 							System.out.println("empty");
@@ -245,6 +244,8 @@ public class Peer {
 					e.printStackTrace();
 				} catch (IOException e) {
 					e.printStackTrace();
+				} catch (NullPointerException e) {
+					System.out.println("empty");
 				}
 			}
 		});
@@ -270,10 +271,14 @@ public class Peer {
 				            
 				            String received = new String(packet.getData(), 0, packet.getLength());
 							Document command = Document.parse(received);
+							
+							System.out.println(received);
 				         
 							// if a new peer come in, check maximum number
 							if (command.get("command").toString().equals("HANDSHAKE_REQUEST")) {
-								if (connectedPeers.size() < 10) {
+								
+								if (connectedPeers.size() < Integer
+										.parseInt(Configuration.getConfigurationValue("maximumIncommingConnections"))) {
 									connectedPeers.add(peerHostport);
 								} else {
 									Document newCommand = new Document();
@@ -297,9 +302,24 @@ public class Peer {
 			                 connectedPeers.add(peerHostport);
 			                }
 			                
+			                if (command.get("command").toString().equals("CONNECTION_REFUSED")) {
+								ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
+								for (Document peer : peers) {
+									System.out.println(peer.toJson());
+									String h = peer.getString("host");
+									String p = peer.get("port").toString();
+									hostPortsQueue.offer(new HostPort(h, Integer.parseInt(p)));
+								}
+								
+								while (!hostPortsQueue.isEmpty()) {
+									HostPort hostport = hostPortsQueue.poll();
+									sendConnectionRequest(socket, hostport.host, hostport.port);
+								}
+				            }
+			                
 			                if (!connectedPeers.contains(peerHostport)) {
 			                 continue;
-			       }
+			                }
 				            
 							
 							String reply;
@@ -333,12 +353,13 @@ public class Peer {
 									socket.send(packet);
 									System.out.println("file created");
 									
+									Document create_reply = Document.parse(reply);
+									if (create_reply.get("status").toString().equals("true")) {
 									String reply1 = ser.file_bytes_request(command);
-									if (!reply1.equals("complete")) {
-										buf = reply1.getBytes();
-										packet = new DatagramPacket(buf, buf.length, peerAddress, peerPort);
-										socket.send(packet);
-										System.out.println("send file_bytes_request");
+									buf = reply1.getBytes();
+									packet = new DatagramPacket(buf, buf.length, peerAddress, peerPort);
+									socket.send(packet);
+									System.out.println("send file_bytes_request");
 									}
 									break;
 									
@@ -402,7 +423,7 @@ public class Peer {
 											break;
 										}else {
 										buf = reply3.getBytes();
-										packet = new DatagramPacket(buf, buf.length, peerAddress, port);
+										packet = new DatagramPacket(buf, buf.length, peerAddress, peerPort);
 										socket.send(packet);
 										}
 									} catch (NoSuchAlgorithmException e) {
@@ -422,45 +443,39 @@ public class Peer {
 									
 								case "FILE_CREATE_RESPONSE":
 									// check responseList
-									des = ((Document) command.get("fileDescriptor")).toJson();
+									des = ((Document) command.get("fileDescriptor")).toJson() + peerHostport.toString();
 									if (responseList.containsKey(des)) {
 										responseList.put(des, true);
 									}
 									break;
 								case "FILE_DELETE_RESPONSE":
-									des = ((Document) command.get("fileDescriptor")).toJson();
+									des = ((Document) command.get("fileDescriptor")).toJson() + peerHostport.toString();
 									if (responseList.containsKey(des)) {
 										responseList.put(des, true);
 									}
 									break;
 								case "FILE_MODIFY_RESPONSE":
-									des = ((Document) command.get("fileDescriptor")).toJson();
+									des = ((Document) command.get("fileDescriptor")).toJson() + peerHostport.toString();
 									if (responseList.containsKey(des)) {
 										responseList.put(des, true);
 									}
 									break;
 								case "DIRECTORY_CREATE_RESPONSE":
-									des = (String) command.get("pathName");
+									des = (String) command.get("pathName") + peerHostport.toString();
 									if (responseList.containsKey(des)) {
 										responseList.put(des, true);
 									}
 									break;
 								case "DIRECTORY_DELETE_RESPONSE":
-									des = (String) command.get("pathName");
+									des = (String) command.get("pathName") + peerHostport.toString();
 									if (responseList.containsKey(des)) {
 										responseList.put(des, true);
 									}
 									break;
 									
 								// =========================== other protocols ===============================
-								case "CONNECTION_REFUSED":
-									des = peerHostport.toString();
-									if (responseList.containsKey(des)) {
-										responseList.put(des, false);
-									}
-							    	break;
-									
 								case "INVALID_PROTOCOL":
+									connectedPeers.remove(peerHostport);
 									break;
 								}
 						} 
@@ -865,9 +880,6 @@ public class Peer {
 			}
 			return false;
 		}
-
-
-	
 }
 
 
