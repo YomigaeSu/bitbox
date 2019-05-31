@@ -37,13 +37,14 @@ import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 
+import net.bytebuddy.asm.Advice.Exit;
 import unimelb.bitbox.util.CmdLineArgs;
 import unimelb.bitbox.util.Configuration;
 import unimelb.bitbox.util.Document;
 import unimelb.bitbox.util.HostPort;
 public class Client {
 	private static Logger log = Logger.getLogger(Configuration.class.getName());
-	private static final String MY_ID= "yilu@unimelb";
+	private static String MY_ID;
 	//	private static final String MY_ID= "aaron@krusty";
 	private static final String PRIVATEKEY_FILE = "bitboxclient_rsa";
 	
@@ -56,6 +57,7 @@ public class Client {
 		try {
 
 			parser.parseArgument(args);
+			MY_ID = argsBean.getIdentity();
 			HostPort server = argsBean.getServer();
 			String CmdMsg = generateCmd(argsBean);
 			if(CmdMsg==null) {
@@ -194,7 +196,8 @@ public class Client {
 			byte[] decodedKey = rsa.doFinal(Base64.getDecoder().decode(encrypted));
 			secretKey = (SecretKey)new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
 		} catch (NoSuchPaddingException | InvalidKeyException | IllegalBlockSizeException | BadPaddingException | FileNotFoundException | InvalidKeySpecException | NoSuchAlgorithmException e) {
-			e.printStackTrace();
+			System.out.println("Key doesn't match");
+			System.exit(0);
 		}
 //		// Getting the Secret key without using RSA
 //		byte[] encodedKey=authRes.getString("AES128").getBytes();
