@@ -233,7 +233,7 @@ public class Peer {
 					}
 					if (count == tryTimes) {
 						// disconnect
-						System.out.println("time out");
+						System.out.println("time out: "+new String(packet.getData(), 0, packet.getLength()));
 						responseList.remove(key);
 						connectedPeers.remove(hostport);
 					} else {
@@ -277,7 +277,6 @@ public class Peer {
 				         
 							// if a new peer come in, check maximum number
 							if (command.get("command").toString().equals("HANDSHAKE_REQUEST")) {
-								
 								if (connectedPeers.size() < Integer
 										.parseInt(Configuration.getConfigurationValue("maximumIncommingConnections"))) {
 									connectedPeers.add(peerHostport);
@@ -300,13 +299,13 @@ public class Peer {
 							}
 			                
 			                if (command.get("command").toString().equals("HANDSHAKE_RESPONSE")) {
-			                 connectedPeers.add(peerHostport);
+			                	connectedPeers.add(peerHostport);
 			                }
 			                
 			                if (command.get("command").toString().equals("CONNECTION_REFUSED")) {
-								ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
+			                	ArrayList<Document> peers = (ArrayList<Document>) command.get("peers");
 								for (Document peer : peers) {
-									System.out.println(peer.toJson());
+//									System.out.println(peer.toJson());
 									String h = peer.getString("host");
 									String p = peer.get("port").toString();
 									hostPortsQueue.offer(new HostPort(h, Integer.parseInt(p)));
@@ -385,7 +384,7 @@ public class Peer {
 									buf = reply.getBytes();
 									packet = new DatagramPacket(buf, buf.length, peerAddress, peerPort);
 									socket.send(packet);
-									System.out.println("directory created");
+//									System.out.println("directory created");
 									break;
 									
 								case "FILE_MODIFY_REQUEST":
@@ -482,6 +481,7 @@ public class Peer {
 						} 
 					} catch (IOException e) {
 						System.out.println("error");
+						e.printStackTrace();
 					} catch (NoSuchAlgorithmException e1) {
 						e1.printStackTrace();
 					}
@@ -508,7 +508,7 @@ public class Peer {
 							BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
 							String received = in.readLine();
-							System.out.println(received);
+//							System.out.println(received);
 
 							Document command = Document.parse(received);
 							String response;
@@ -560,7 +560,7 @@ public class Peer {
 									if(received==null) {
 										continue;
 									}
-									System.out.println("Message received: "+received);
+//									System.out.println("Message received: "+received);
 
 									// ============= Decrypt the message with AES key =============
 									command =Document.parse(received);
@@ -577,7 +577,7 @@ public class Peer {
 									response=doc.toJson();
 									out.write(response+"\n");
 									out.flush();
-									System.out.println("Message sent: "+response);
+//									System.out.println("Message sent: "+response);
 								}
 
 							}
@@ -759,8 +759,9 @@ public class Peer {
 		/**
 		 * @param peerIP
 		 * @param peerPort
+		 * @throws UnknownHostException 
 		 */
-		private static HostPort findPeer(String peerIP, int peerPort) {
+		private static HostPort findPeer(String peerIP, int peerPort) throws UnknownHostException {
 			Iterator<HostPort> it  = connectedPeers.iterator();
 			while(it.hasNext()) {
 				HostPort peer = it.next();
@@ -768,6 +769,9 @@ public class Peer {
 				//						System.out.println((peer.host.equals(peerIP)));
 				//						System.out.println((peer.port==peerPort));
 				if (peer.host.equals(peerIP)&&peer.port==peerPort) {	
+					return peer;
+				}
+				if (peer.host.equals(InetAddress.getByName(peerIP).getHostAddress())&&peer.port==peerPort) {	
 					return peer;
 				}
 
