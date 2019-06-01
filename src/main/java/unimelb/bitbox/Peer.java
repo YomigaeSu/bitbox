@@ -356,10 +356,12 @@ public class Peer {
 									
 									Document create_reply = Document.parse(reply);
 									if (create_reply.get("status").toString().equals("true")) {
-									String reply1 = ser.file_bytes_request(command);
-									buf = reply1.getBytes();
-									packet = new DatagramPacket(buf, buf.length, peerAddress, peerPort);
-									socket.send(packet);
+										String reply1 = ser.file_bytes_request(command);
+										if(!reply1.equals("complete")) {
+											buf = reply1.getBytes();
+											packet = new DatagramPacket(buf, buf.length, peerAddress, peerPort);
+											socket.send(packet);
+										}
 									System.out.println("send file_bytes_request");
 									}
 									break;
