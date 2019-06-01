@@ -759,8 +759,9 @@ public class Peer {
 		/**
 		 * @param peerIP
 		 * @param peerPort
+		 * @throws UnknownHostException 
 		 */
-		private static HostPort findPeer(String peerIP, int peerPort) {
+		private static HostPort findPeer(String peerIP, int peerPort) throws UnknownHostException {
 			Iterator<HostPort> it  = connectedPeers.iterator();
 			while(it.hasNext()) {
 				HostPort peer = it.next();
@@ -768,6 +769,9 @@ public class Peer {
 				//						System.out.println((peer.host.equals(peerIP)));
 				//						System.out.println((peer.port==peerPort));
 				if (peer.host.equals(peerIP)&&peer.port==peerPort) {	
+					return peer;
+				}
+				if (peer.host.equals(InetAddress.getByName(peerIP).getHostAddress())&&peer.port==peerPort) { 
 					return peer;
 				}
 
